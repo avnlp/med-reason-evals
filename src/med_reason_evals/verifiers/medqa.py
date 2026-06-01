@@ -9,6 +9,7 @@ Dataset: HuggingFace `GBaker/MedQA-USMLE-4-options` dataset.
 """
 
 import os
+
 import verifiers as vf
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -52,7 +53,7 @@ def load_environment(
 
     rubric = vf.Rubric(
         funcs=[exact_match_reward_func, parser.get_format_reward_func()],
-        weights=[1.0, 0.0],  
+        weights=[1.0, 0.0],
         parser=parser,
     )
 

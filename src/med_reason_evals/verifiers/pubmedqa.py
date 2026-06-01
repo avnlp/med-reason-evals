@@ -9,6 +9,7 @@ Dataset: HuggingFace `qiaojin/PubMedQA` (pqa_labeled and pqa_artificial splits).
 
 import json
 import os
+from typing import Any
 
 import verifiers as vf
 from datasets import load_dataset
@@ -16,7 +17,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 
-def map_row_to_mcq_prompt(row):
+def map_row_to_mcq_prompt(row: dict[str, Any]) -> dict[str, str]:
     """Map PubMedQA row to MCQ-style prompt with A/B/C answers."""
     question_text = row.get("question", "")
     context_dict = row.get("context", {})
@@ -45,7 +46,13 @@ def map_row_to_mcq_prompt(row):
     }
 
 
-def classification_reward_func(prompt, completion, answer, state, **kwargs) -> float:
+def classification_reward_func(
+    prompt: str,
+    completion: list[dict[str, Any]] | str,
+    answer: str,
+    state: Any,
+    **kwargs: Any,
+) -> float:
     """Exact match reward: 1.0 if predicted letter matches ground truth."""
     # Extract content from chat completion
     if isinstance(completion, list) and len(completion) > 0:
@@ -69,9 +76,9 @@ def main() -> None:
     load_dotenv()
 
     # Load datasets
-    DATASET_PATH = "qiaojin/PubMedQA"
-    dataset_train = load_dataset(DATASET_PATH, name="pqa_artificial", split="train")
-    dataset_test = load_dataset(DATASET_PATH, name="pqa_labeled", split="train")
+    dataset_path = "qiaojin/PubMedQA"
+    dataset_train = load_dataset(dataset_path, name="pqa_artificial", split="train")
+    dataset_test = load_dataset(dataset_path, name="pqa_labeled", split="train")
 
     # Filter test set to human-annotated 500 examples
     here = os.path.dirname(__file__)
