@@ -8,7 +8,7 @@ from typing import Any
 
 
 def correct_answer_reward_func(
-    parser: Any, completion: str, answer: str, **kwargs
+    parser: Any, completion: str, answer: str, **kwargs: Any
 ) -> float:
     """Reward function for correct answer.
 
