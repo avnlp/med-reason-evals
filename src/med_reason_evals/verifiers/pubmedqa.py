@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 
-def map_row_to_mcq_prompt(row: dict) -> dict:
+def map_row_to_mcq_prompt(row: dict[str, Any]) -> dict[str, str]:
     """Map PubMedQA row to MCQ-style prompt with A/B/C answers."""
     question_text = row.get("question", "")
     context_dict = row.get("context", {})
