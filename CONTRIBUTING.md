@@ -1,40 +1,113 @@
-# Contributing to rag-pipelines
+# Contributing to Med-Reason-Evals
 
-Thanks for your interest in contributing to the rag-pipelines!
+Thank you for your interest in contributing to Med-Reason-Evals! We welcome contributions from the community and appreciate your efforts to improve this project.
 
-To submit PRs, please fill out the PR template along with the PR. If the PR
-fixes an issue, don't forget to link the PR to the issue!
+## How to Contribute
 
-## Setup Environment
+There are many ways to contribute to Med-Reason-Evals:
 
-Clone the repository and create the python virtual environment:
+- Submit bug reports or feature requests via [GitHub Issues](https://github.com/avnlp/med-reason-evals/issues).
+- Fix bugs or implement features via [Pull Requests](https://github.com/avnlp/med-reason-evals/pulls).
+- Improve documentation.
+- Review existing pull requests.
+- Help answer questions from other users.
+
+## Development Setup
+
+1. Fork the repository on GitHub.
+
+2. Clone your fork locally and navigate to the project directory:
+
+    ```bash
+    cd med-reason-evals
+    ```
+
+    Note: This project requires Python 3.10 or higher.
+
+3. The project uses [uv](https://github.com/astral-sh/uv) for dependency management. Ensure uv is installed:
+
+   ```bash
+   pip install uv
+   ```
+
+4. Sync the project and install all dependencies:
+
+     ```bash
+     make sync
+     ```
+
+     Then activate the virtual environment:
+
+     ```bash
+     source .venv/bin/activate
+     ```
+
+     This creates an isolated virtual environment with project dependencies and the project installed in editable mode.
+
+## Code Quality Standards
+
+### Testing
+
+Before submitting a pull request, ensure all tests pass:
 
 ```bash
-uv sync --all-extras --dev
+make test
 ```
 
-Activate the virtual environment:
+To run tests with coverage:
 
 ```bash
-source .venv/bin/activate
+make cov
 ```
 
-## Pre-commit hooks
+Add tests for any new functionality or bug fixes.
 
-Once the python virtual environment is setup, you can run pre-commit hooks using:
+### Code Quality
+
+This project uses:
+
+- [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
+- [mypy](https://mypy.readthedocs.io/) for type checking.
+
+Format and lint your code before submitting:
 
 ```bash
-pre-commit run --all-files
+make lint-all
 ```
 
-## Coding guidelines
+This command will format code with Ruff, apply auto-fixes with Ruff, and check typing with mypy.
 
-For code style, we recommend the [PEP 8 style guide](https://peps.python.org/pep-0008/).
+### Useful Development Commands
 
-For docstrings we use [Google format](https://google.github.io/styleguide/pyguide.html).
+**Setup:**
 
-We use [ruff](https://docs.astral.sh/ruff/) for code formatting and static code
-analysis. Ruff checks various rules including [flake8](https://docs.astral.sh/ruff/faq/#how-does-ruff-compare-to-flake8). The pre-commit hooks show errors which you need to fix before submitting a PR.
+- `make sync` - Create/sync development environment (installs all dependencies).
 
-Last but not the least, we use type hints in our code which is then checked using
-[mypy](https://mypy.readthedocs.io/en/stable/).
+**Testing:**
+
+- `make test` - Run unit tests (excludes integration tests).
+- `make test-ci` - Run tests with coverage and XML/junit output (used in CI).
+- `make cov` - Run tests with coverage and generate html/xml reports.
+
+**Code Quality:**
+
+- `make lint-all` - Run all code quality checks and formatting (format + lint + type check).
+- `make lint-fmt` - Format code and apply auto-fixes (ruff).
+- `make lint-check` - Check formatting and lint without modifying files.
+- `make lint-style` - Lint only (no changes).
+- `make lint-typing` - Type check only (mypy).
+- `make lint-typos` - Check for typos.
+
+**Security:**
+
+- `make security-bandit` - Run Bandit security scan.
+- `make security-audit` - Run pip-audit for dependency vulnerabilities.
+- `make security` - Run all security scans.
+
+Run `make help` to see all available targets.
+
+## Community Guidelines
+
+Please be respectful and constructive in all interactions.
+
+By contributing to this project, you agree that your contributions will be licensed under the MIT license as specified in the [LICENSE](LICENSE) file.
