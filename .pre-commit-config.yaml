@@ -21,11 +21,6 @@ repos:
     hooks:
       - id: gitleaks
 
-  - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.9.27
-    hooks:
-      - id: uv-lock
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.14
     hooks:
