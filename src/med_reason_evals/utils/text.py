@@ -75,7 +75,11 @@ def normalize_answer(text: str | None, mode: str = "basic") -> str:
 
     if mode == "semantic":
         normalized = re.sub(r"\b(a|an|the)\b", "", normalized)
-        normalized = "".join(char for char in normalized if not unicodedata.category(char).startswith("P"))
+        normalized = "".join(
+            char
+            for char in normalized
+            if not unicodedata.category(char).startswith("P")
+        )
         return re.sub(r"\s+", " ", normalized).strip()
 
     raise ValueError(f"Unknown normalization mode: {mode}")
