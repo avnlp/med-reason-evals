@@ -30,10 +30,13 @@ from med_reason_evals.utils.text import (
 )
 
 
+normalize_text = normalize_answer
+
 __all__ = [
     "nfkc_casefold",
     "normalize_spaces",
     "normalize_answer",
+    "normalize_text",
     "extract_xml_answer",
     "extract_boxed_answer",
     "extract_answer",
