@@ -80,12 +80,13 @@ def parse_json_response(text: str) -> dict[str, Any] | list[Any]:
         # The shallow pattern avoids matching nested structures that might be
         # truncated mid-stream, which is common in incomplete model responses.
         decoder = json.JSONDecoder()
-        for match in re.finditer(r"\{", text):
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"[\[{]", text):
             try:
                 payload, _ = decoder.raw_decode(text[match.start() :])
             except json.JSONDecodeError:
                 continue
-            if isinstance(payload, dict):
+            if isinstance(payload, (dict, list)):
                 return payload
         return {}
 
