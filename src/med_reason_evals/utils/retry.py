@@ -122,9 +122,10 @@ async def call_with_retry(
                 return await func(*args, **kwargs)
     except Exception as exc:
         if _retry_logging_enabled():
-            LOGGER.error("OpenAI call failed: %s", exc)
+            LOGGER.error("OpenAI call failed after retries: %s", exc)
         raise
-    raise RuntimeError("Retry loop terminated unexpectedly.")
+    # Unreachable: reraise=True ensures the loop always returns or raises.
+    raise AssertionError("Retry loop terminated unexpectedly.")
 
 
 def wrap_openai_call(
