@@ -6,7 +6,6 @@ lightweight normalization for MCQ or more aggressive semantic matching.
 """
 
 import re
-import string
 import unicodedata
 
 

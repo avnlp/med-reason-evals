@@ -66,9 +66,12 @@ def parse_json_response(text: str) -> dict[str, Any] | list[Any]:
         The parsed JSON payload, or an empty dict if parsing fails.
     """
     json_match = re.search(
-        r"
+        r"```(?:json)?\s*\n?([\s\S]*?)```",
+        text,
+        re.DOTALL,
+    )
     if json_match:
-        text = json_match.group(1)
+        text = json_match.group(1).strip()
 
     try:
         return json.loads(text)
