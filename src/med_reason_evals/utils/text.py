@@ -10,7 +10,7 @@ import string
 import unicodedata
 
 
-def nfkc_casefold(text: str) -> str:
+def nfkc_casefold(text: str | None) -> str:
     """Apply Unicode NFKC normalization and case folding.
 
     NFKC is chosen over NFC for evaluation because it decomposes compatibility
@@ -55,11 +55,13 @@ def normalize_answer(text: str | None, mode: str = "basic") -> str:
         ValueError: If an unknown mode is specified.
     """
     if text is None:
+        if mode not in {"basic", "semantic", "mcq"}:
+            raise ValueError(f"Unknown normalization mode: {mode}")
         return ""
 
     if mode == "mcq":
         # Treat single-character MCQ outputs as categorical labels.
-        stripped = text.strip()
+        stripped = unicodedata.normalize("NFKC", text).strip()
         if len(stripped) == 1:
             if stripped.isalpha():
                 return stripped.upper()
@@ -74,7 +76,7 @@ def normalize_answer(text: str | None, mode: str = "basic") -> str:
 
     if mode == "semantic":
         normalized = re.sub(r"\b(a|an|the)\b", "", normalized)
-        normalized = normalized.translate(str.maketrans("", "", string.punctuation))
+        normalized = "".join(char for char in normalized if not unicodedata.category(char).startswith("P"))
         return re.sub(r"\s+", " ", normalized).strip()
 
     raise ValueError(f"Unknown normalization mode: {mode}")

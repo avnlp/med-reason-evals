@@ -17,9 +17,9 @@ This module provides normalization, extraction, parsing, and retry helpers used 
 4. Retry failed API calls under controlled backoff.
 
 ```python
-from med_reason_evals.utils import normalize_text, extract_answer
+from med_reason_evals.utils import normalize_answer, extract_answer
 
-normalized = normalize_text(response_text, mode="basic")
+normalized = normalize_answer(response_text, mode="basic")
 answer = extract_answer(response_text)
 ```
 

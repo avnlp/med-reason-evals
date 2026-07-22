@@ -16,7 +16,7 @@ _THINK_CLOSE_RE = re.compile(r"</think>", re.IGNORECASE)
 _THINK_PAIR_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
-def strip_think_tags(text: str) -> str:
+def strip_think_tags(text: str | None) -> str:
     """Extract the answer section from text, removing think tags.
 
     Behavior is intentionally conservative:
@@ -56,7 +56,7 @@ def strip_think_tags(text: str) -> str:
     return text[first.end() :].strip()
 
 
-def parse_json_response(text: str) -> dict[str, Any]:
+def parse_json_response(text: str) -> dict[str, Any] | list[Any]:
     """Extract and parse JSON from a judge response.
 
     Args:
@@ -65,7 +65,8 @@ def parse_json_response(text: str) -> dict[str, Any]:
     Returns:
         The parsed JSON payload, or an empty dict if parsing fails.
     """
-    json_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    json_match = re.search(
+        r"
     if json_match:
         text = json_match.group(1)
 
@@ -75,13 +76,14 @@ def parse_json_response(text: str) -> dict[str, Any]:
         # Fall back to the first shallow JSON object to salvage partial outputs.
         # The shallow pattern avoids matching nested structures that might be
         # truncated mid-stream, which is common in incomplete model responses.
-        json_pattern = r"\{[^{}]*\}"
-        matches = re.findall(json_pattern, text)
-        for match in matches:
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\{", text):
             try:
-                return json.loads(match)
+                payload, _ = decoder.raw_decode(text[match.start() :])
             except json.JSONDecodeError:
                 continue
+            if isinstance(payload, dict):
+                return payload
         return {}
 
 

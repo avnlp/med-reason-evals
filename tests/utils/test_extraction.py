@@ -91,7 +91,7 @@ class TestExtractBoxedAnswer:
         assert extract_boxed_answer(text) == ""
 
     def test_boxed_with_whitespace(self):
-        """Whitespace in boxed should be preserved (not stripped)."""
+        """Whitespace around boxed content should be stripped."""
         text = "\\boxed{  answer  }"
         assert extract_boxed_answer(text) == "answer"
 

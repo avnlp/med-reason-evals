@@ -26,7 +26,7 @@ _ANSWER_PATTERN = re.compile(
 )
 
 _TOKEN_PATTERN = re.compile(
-    r"(?:\(|\b)([A-Za-z]|\d{1,2})(?:\)|\b)",
+    r"(?:\(|\b)([A-Za-z]|\d{1,2})(?:\)|\b)[\s.!?]*$",
 )
 
 
@@ -69,7 +69,7 @@ def extract_xml_answer(text: str, field: str = "answer") -> str | None:
         return None
 
     pattern = re.compile(
-        rf"<{field}>\s*(.*?)\s*</{field}>",
+        rf"<{re.escape(field)}>\s*(.*?)\s*</{re.escape(field)}>",
         re.DOTALL | re.IGNORECASE,
     )
     matches = list(pattern.finditer(text))
