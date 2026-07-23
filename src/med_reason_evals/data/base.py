@@ -31,6 +31,17 @@ class BaseDataset(ABC):
         self.streaming = streaming
         self._kwargs = kwargs
 
+    @property
+    @abstractmethod
+    def num_options(self) -> int:
+        """Return the number of MCQ options.
+
+        Returns:
+            An integer representing the number of options. Returns 1 for
+            non-MCQ (e.g., open-ended) datasets.
+        """
+        ...
+
     @abstractmethod
     def get_verifiers_dataset(self) -> Dataset | IterableDataset:
         """Return a dataset formatted for the Verifiers evaluation harness.
@@ -39,7 +50,6 @@ class BaseDataset(ABC):
             A Hugging Face Dataset or IterableDataset with ``question``,
             ``answer``, and ``info`` fields populated for the evaluator.
         """
-        raise NotImplementedError
 
     @abstractmethod
     def get_verl_dataset(self) -> Dataset | IterableDataset:
@@ -49,4 +59,3 @@ class BaseDataset(ABC):
             A Hugging Face Dataset or IterableDataset with ``prompt``,
             ``ground_truth``, ``data_source``, and ``metadata`` fields.
         """
-        raise NotImplementedError
