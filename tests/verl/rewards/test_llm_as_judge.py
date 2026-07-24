@@ -1081,3 +1081,94 @@ class TestEdgeCases:
         )
 
         assert result == 0.0
+
+    @pytest.mark.asyncio
+    async def test_triple_quote_escaping_with_default_prompt(self, mock_judge_client):
+        """Triple quotes in prediction should be escaped with default prompt."""
+        received_content = None
+
+        async def capture_create(*, model, messages, **kwargs):
+            nonlocal received_content
+            received_content = messages[0]["content"]
+            mock_response = MagicMock()
+            mock_choice = MagicMock()
+            mock_message = MagicMock()
+            mock_message.content = "yes"
+            mock_choice.message = mock_message
+            mock_response.choices = [mock_choice]
+            return mock_response
+
+        mock_judge_client.chat.completions.create = capture_create
+
+        prediction_with_quotes = 'answer is """correct"""'
+        await judge_answer(
+            prediction=prediction_with_quotes,
+            ground_truth="correct",
+            judge_client=mock_judge_client,
+        )
+
+        assert received_content is not None
+        assert "\u200b" in received_content
+
+    @pytest.mark.asyncio
+    async def test_triple_quote_no_escaping_without_delimiter(self, mock_judge_client):
+        """Triple quotes should not be escaped in custom prompt without delimiter."""
+        received_content = None
+
+        async def capture_create(*, model, messages, **kwargs):
+            nonlocal received_content
+            received_content = messages[0]["content"]
+            mock_response = MagicMock()
+            mock_choice = MagicMock()
+            mock_message = MagicMock()
+            mock_message.content = "yes"
+            mock_choice.message = mock_message
+            mock_response.choices = [mock_choice]
+            return mock_response
+
+        mock_judge_client.chat.completions.create = capture_create
+
+        custom_prompt_no_delimiter = "Is {prediction} equal to {ground_truth}?"
+        prediction_with_quotes = 'answer is """correct"""'
+        await judge_answer(
+            prediction=prediction_with_quotes,
+            ground_truth="correct",
+            judge_client=mock_judge_client,
+            judge_prompt=custom_prompt_no_delimiter,
+        )
+
+        assert received_content is not None
+        assert prediction_with_quotes in received_content
+        assert "\u200b" not in received_content
+
+    @pytest.mark.asyncio
+    async def test_triple_quote_escaping_with_custom_delimiter_prompt(
+        self, mock_judge_client
+    ):
+        """Triple quotes should be escaped when custom prompt uses delimiter."""
+        received_content = None
+
+        async def capture_create(*, model, messages, **kwargs):
+            nonlocal received_content
+            received_content = messages[0]["content"]
+            mock_response = MagicMock()
+            mock_choice = MagicMock()
+            mock_message = MagicMock()
+            mock_message.content = "yes"
+            mock_choice.message = mock_message
+            mock_response.choices = [mock_choice]
+            return mock_response
+
+        mock_judge_client.chat.completions.create = capture_create
+
+        custom_prompt_with_delimiter = 'Evaluate: """{prediction}""" vs {ground_truth}'
+        prediction_with_quotes = 'answer is """correct"""'
+        await judge_answer(
+            prediction=prediction_with_quotes,
+            ground_truth="correct",
+            judge_client=mock_judge_client,
+            judge_prompt=custom_prompt_with_delimiter,
+        )
+
+        assert received_content is not None
+        assert "\u200b" in received_content

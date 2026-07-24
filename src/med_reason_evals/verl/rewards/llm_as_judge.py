@@ -66,8 +66,17 @@ async def judge_answer(
     Returns:
         True if the judge says the answer is correct.
     """
-    prompt = (judge_prompt or DEFAULT_JUDGE_PROMPT).format(
-        prediction=_escape_triple_quote_delimiter(prediction),
+    template = judge_prompt or DEFAULT_JUDGE_PROMPT
+    uses_triple_quote_delimiter = '"""{prediction}"""' in template
+
+    escaped_prediction = (
+        _escape_triple_quote_delimiter(prediction)
+        if uses_triple_quote_delimiter
+        else prediction
+    )
+
+    prompt = template.format(
+        prediction=escaped_prediction,
         ground_truth=ground_truth,
     )
 
