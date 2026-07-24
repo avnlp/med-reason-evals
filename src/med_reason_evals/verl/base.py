@@ -211,6 +211,7 @@ class BaseVerlEvaluator(ABC):
             pending.append(task)
             count += 1
 
+        success_count = 0
         if pending:
             results = await asyncio.gather(*pending, return_exceptions=True)
             for r in results:
@@ -218,12 +219,13 @@ class BaseVerlEvaluator(ABC):
                     print(f"Warning: Evaluation failed: {r}")
                 else:
                     total_score += r
+                    success_count += 1
 
             if count >= progress_interval:
-                avg = total_score / count
+                avg = total_score / success_count if success_count else 0
                 print(f"Processed {count} examples, avg score: {avg:.3f}")
 
-        avg_score = total_score / count if count else 0
+        avg_score = total_score / success_count if success_count else 0
         return self._build_result(avg_score)
 
     @abstractmethod
