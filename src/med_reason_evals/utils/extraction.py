@@ -27,12 +27,12 @@ _ANSWER_PATTERN = re.compile(
 
 
 _FREE_FORM_PATTERN = re.compile(
-    r"(?:\bfinal\s+answer\b|\banswer\b|\ban\s+is\b|\bdiagnosis\s+is\b"
+    r"(?:\bfinal\s+answer\b|\banswer\b|\bans\b|\bdiagnosis\s+is\b"
     r"|\bconclusion\b|\bin\s+conclusion\b|\bmost\s+likely\b"
     r"|\bbest[-\s]+supported\s+answer\b)\s*[:\-–—]?\s*(?:is\s*)?"
     r"\s*(?:[*_`~]+\s*)*"
-    r"([A-Za-z0-9][A-Za-z\s,;:/\-–—()]+)"
-    r"(?:\.|\n|$)",
+    r"([A-Za-z0-9][^\n.!?]*?)"
+    r"\s*(?:[*_`~]+\s*)*(?:[.!?]|\n|$)",
     re.IGNORECASE,
 )
 

@@ -172,6 +172,8 @@ class BaseVerlEvaluator(ABC):
             if max_concurrency is not None
             else self.gen_config.max_concurrency
         )
+        if concurrency <= 0:
+            raise ValueError("max_concurrency must be greater than 0")
         semaphore = asyncio.Semaphore(concurrency)
 
         dataset = self._load_dataset()

@@ -18,9 +18,9 @@ Synchronous exceptions:
     - semantic_score (sync): Normalized text matching.
 
 Async functions (require await):
-    - llm_judge_score: Requires a judge_client and judge_model.
-    - healthbench_score: Requires a judge_client and judge_model.
-    - pubhealthbench_score: Requires a judge_client and judge_model.
+    - llm_judge_score: Requires a judge_client; judge_model is optional.
+    - healthbench_score: Requires a judge_client; judge_model is optional.
+    - pubhealthbench_score: Requires a judge_client; judge_model is optional.
 
 Returns a score between 0.0 and 1.0, where 1.0 indicates a correct answer.
 """
