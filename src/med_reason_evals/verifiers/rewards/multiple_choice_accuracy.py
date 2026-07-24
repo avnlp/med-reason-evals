@@ -1,0 +1,497 @@
+"""Multiple-choice question accuracy reward function.
+
+Main use case: Handle models that either return the letter/number (preferred)
+or return the entire answer text verbatim (fallback).
+
+Supports chain-of-thought by prioritizing anchored patterns like "answer is X"
+before falling back to last token or text matching. Attempts to recognize
+negations to avoid false positives (e.g., "the answer is not C").
+"""
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+from med_reason_evals.utils.parsing import strip_think_tags
+from med_reason_evals.utils.text import nfkc_casefold, normalize_spaces
+
+
+@dataclass
+class MCQAccuracyResult:
+    """Result of multiple-choice accuracy grading."""
+
+    is_correct: bool
+    """Whether the answer was graded as correct."""
+
+    method: str
+    """Method used for grading:
+    'direct_answer', 'anchored_token', 'last_token', 'answer_text', or 'none'.
+    """
+
+    matched_answer: str | None = None
+    """The extracted answer if found, otherwise None."""
+
+    correct_answer: str | None = None
+    """The correct answer for reference, if available."""
+
+
+def _strip_tex(text: str) -> str:
+    """Remove LaTeX formatting if pylatexenc is available."""
+    try:
+        from pylatexenc.latex2text import LatexNodes2Text
+
+        return LatexNodes2Text(math_mode="text").latex_to_text(text)
+    except Exception:
+        return text
+
+
+def _norm_letter(letter: str) -> str | None:
+    """Normalize a token to uppercase letter or digit string."""
+    letter = (letter or "").strip()
+    if not letter:
+        return None
+    if letter.isdigit():
+        return letter
+    if letter.isalpha() and len(letter) == 1:
+        return letter.upper()
+    return None
+
+
+def _token_kind_matches_answer_letter(
+    predicted: str | None, answer_letter: str
+) -> bool:
+    """Return True if predicted token type matches the task's option type.
+
+    This prevents cases like '<answer>20' in a letter-based task (answer_letter='C')
+    from being treated as an explicit option selection, which would incorrectly disable
+    answer_text fallback.
+    """
+    if predicted is None:
+        return False
+    if answer_letter.isdigit():
+        return predicted.isdigit()
+    return predicted.isalpha()
+
+
+# Apostrophe variants accepted in contractions: ASCII (') and Unicode right
+# single quotation mark (U+2019, '), which some tokenizers/renderers emit.
+_APOS = "['’]"
+# Contracted negation forms (e.g. "isn't", "isn't" with a curly apostrophe).
+_NEG_CONTRACTION = rf"(?:isn|wasn|aren|doesn){_APOS}t"
+
+# Anchored patterns like "final answer: C" or "the answer is D"
+ANCHOR_PATTERN = re.compile(
+    r"(?:\bfinal\s+answer\b|\banswer\b|\bans\b|\bchoice\b|\boption\b|\bselected\b"
+    r"|\bi\s+choose\b|\bi\s+pick\b|\btherefore\b|\bthus\b|\bso\b|\bconclusion\b"
+    r"|\bin\s+conclusion\b|\bmost\s+likely\b|\bbest[-\s]+supported\s+answer\b|<answer>)\s*"
+    rf"[:\-–—]?\s*(?:is\s*)?(?P<neg>not\s+|{_NEG_CONTRACTION}\s+)?"
+    r"(?:[*_`~]+\s*)*"  # allow markdown wrappers before the option
+    r"\(?\s*(?P<opt>[A-Za-z]|\d{1,2})\s*\)?"  # option token, possibly parenthesized
+    r"\s*[\)\.:]?\s*"  # optional delimiter (e.g., 'B.' or 'B)')
+    r"(?:[*_`~]+\s*)*"  # allow markdown wrappers after the option
+    r"(?![\w+\-/])",
+    re.IGNORECASE,
+)
+
+
+# Any letter/number token that looks like an option
+TOKEN_PATTERN = re.compile(
+    r"(?<![\w+\-/])\(?\s*([A-Za-z]|\d{1,2})\s*[\)\.:]?(?![\w+\-/])",
+    re.IGNORECASE,
+)
+
+# Characters that may trail a bare-letter token fallback match (whitespace,
+# markdown/LaTeX/punctuation wrappers, sentence punctuation, and typographic
+# quotes) without there being further real content.
+_TRAILING_WRAPPER_PATTERN = re.compile(r'^[\s*_`~)\]}$.,;:!?"\'‘’“”]*$')
+
+# Leading option token like "B. Answer text" or "C) ..." at the start of the response
+LEADING_OPTION_PATTERN = re.compile(
+    r"^\s*(?:>\s*)?(?:(?:[-*+]\s+)|(?:\d{1,3}[.)]\s+))?\s*"  # blockquote / list prefixes
+    r"(?:[*_`~]+)?\s*\(?\s*([A-Za-z]|\d{1,2})\s*[\)\.:]\s*\)?\s*(?:[*_`~]+)?\s*(?!\w)",
+    re.IGNORECASE,
+)
+
+# Negation words that invalidate nearby matches
+NEGATION_PATTERN = re.compile(rf"\b(?:not|{_NEG_CONTRACTION})\b", re.IGNORECASE)
+
+# Negative-context phrases that indicate an option mention is NOT a selected answer
+NEGATIVE_AFTER_OPTION_PATTERN = re.compile(
+    rf"^\s*(?:is|are|was|were)\s+(?:incorrect|wrong|false|not\s+correct)\b"
+    rf"|^\s*(?:isn|aren|wasn|weren){_APOS}t\s+correct\b"
+    rf"|^\s*not\s+correct\b",
+    re.IGNORECASE,
+)
+
+# Sentence boundary pattern
+SENTENCE_BOUNDARY = re.compile(r"[.!?]\s+|\n+")
+
+
+def _get_sentence_containing_match(
+    text: str, match: re.Match[str]
+) -> tuple[int, int, int, int]:
+    """Return (sentence_start, sentence_end, match_start, match_end).
+
+    Coordinates are in the original text.
+    """
+    if getattr(match.re, "groupindex", None) and "opt" in match.re.groupindex:
+        match_start, match_end = match.span("opt")
+    else:
+        try:
+            match_start, match_end = match.span(1)
+        except Exception:
+            match_start, match_end = match.span()
+
+    boundaries_before = [
+        m.end() for m in SENTENCE_BOUNDARY.finditer(text[:match_start])
+    ]
+    boundaries_after = [m.start() for m in SENTENCE_BOUNDARY.finditer(text[match_end:])]
+
+    sentence_start = boundaries_before[-1] if boundaries_before else 0
+    sentence_end = match_end + boundaries_after[0] if boundaries_after else len(text)
+    return sentence_start, sentence_end, match_start, match_end
+
+
+def _negated_near(text: str, match: re.Match[str]) -> bool:
+    """Check for negation that appears before the match within the same sentence."""
+    sentence_start, _sentence_end, match_start, _match_end = (
+        _get_sentence_containing_match(text, match)
+    )
+    prefix = text[sentence_start:match_start]
+    return bool(NEGATION_PATTERN.search(prefix))
+
+
+# Marks a new clause within a sentence: negation about an earlier clause (e.g.
+# "B doesn't apply") shouldn't poison a later, unrelated option in the same
+# sentence (e.g. "..., so C").
+_CLAUSE_BOUNDARY_PATTERN = re.compile(
+    r",\s*|;\s*|\b(?:so|therefore|thus|but|however|hence)\b\s*",
+    re.IGNORECASE,
+)
+
+
+def _negated_in_clause(text: str, match: re.Match[str]) -> bool:
+    """Check for negation local to the match's clause, not the whole sentence.
+
+    Like `_negated_near`, but scoped to text after the last clause boundary
+    (comma, semicolon, or a conjunction like "so"/"therefore") before the
+    match, so a negated mention of a different, earlier option doesn't
+    suppress a later, correctly-stated bare answer in the same sentence.
+    """
+    sentence_start, _sentence_end, match_start, _match_end = (
+        _get_sentence_containing_match(text, match)
+    )
+    prefix = text[sentence_start:match_start]
+    clause_boundaries = list(_CLAUSE_BOUNDARY_PATTERN.finditer(prefix))
+    clause_start = clause_boundaries[-1].end() if clause_boundaries else 0
+    local_prefix = prefix[clause_start:]
+    return bool(NEGATION_PATTERN.search(local_prefix))
+
+
+def _negative_after_option(text: str, match: re.Match[str]) -> bool:
+    """Check if an option token is immediately followed by negative context."""
+    _sentence_start, sentence_end, _match_start, match_end = (
+        _get_sentence_containing_match(text, match)
+    )
+    suffix = text[match_end:sentence_end]
+    return bool(NEGATIVE_AFTER_OPTION_PATTERN.search(suffix))
+
+
+def _tail_region(text: str, max_tokens: int = 64) -> str:
+    """Return a short tail slice (last sentence/line) to reduce option-token noise."""
+    boundaries = list(SENTENCE_BOUNDARY.finditer(text))
+    tail = text[boundaries[-1].end() :] if boundaries else text
+    tail = tail.strip()
+
+    if not tail:
+        for line in reversed(text.splitlines()):
+            if line.strip():
+                tail = line.strip()
+                break
+
+    tokens = tail.split()
+    if len(tokens) > max_tokens:
+        tail = " ".join(tokens[-max_tokens:])
+    return tail
+
+
+def _check_anchored_token(
+    llm_answer: str,
+    prefix: str | None,
+    norm_answer_letter: str | None,
+) -> tuple[str | None, bool]:
+    """Check for anchored token (strategy 3).
+
+    Returns:
+        Tuple of (predicted_answer, explicit_choice_found)
+    """
+    prefix_matches: list[re.Match[str]] = []
+    if prefix:
+        prefix_norm = nfkc_casefold(prefix).strip()
+        if prefix_norm:
+            flexible_prefix = re.escape(prefix_norm).replace(r"\ ", r"\s+")
+            prefix_pattern = re.compile(
+                rf"{flexible_prefix}\s*[:-–—]?\s*(?:is\s*)?(?P<neg>not\s+|{_NEG_CONTRACTION}\s+)?"
+                rf"\(?\s*(?P<opt>[A-Za-z]|\d{{1,2}})\s*[\)\.]?(?![\w+\-/])",
+                re.IGNORECASE,
+            )
+            prefix_matches = list(prefix_pattern.finditer(llm_answer))
+
+    anchored_matches = (
+        prefix_matches if prefix_matches else list(ANCHOR_PATTERN.finditer(llm_answer))
+    )
+    if anchored_matches and norm_answer_letter:
+        last_match = anchored_matches[-1]
+        predicted = _norm_letter(last_match.group("opt"))
+        if (
+            last_match.group("neg") is None
+            and not _negative_after_option(llm_answer, last_match)
+            and _token_kind_matches_answer_letter(predicted, norm_answer_letter)
+        ):
+            return predicted, True
+    return None, False
+
+
+def _check_last_token(
+    llm_answer: str,
+    norm_answer_letter: str | None,
+) -> str | None:
+    """Check for last token in tail (strategy 4).
+
+    Returns the predicted answer if found, None otherwise.
+    """
+    if not norm_answer_letter:
+        return None
+    tail = _tail_region(llm_answer)
+    tail_tokens = list(TOKEN_PATTERN.finditer(tail))
+    if tail_tokens:
+        for token_match in reversed(tail_tokens):
+            predicted = _norm_letter(token_match.group(1))
+            if predicted is None:
+                continue
+            # Only treat this as an isolated final-answer token if nothing but
+            # whitespace/markdown/punctuation trails it. This keeps ordinary
+            # prose words that happen to be a single letter (e.g. the article
+            # "a" or pronoun "I") from being mistaken for option A or I when
+            # they're followed by more of the sentence.
+            if not _TRAILING_WRAPPER_PATTERN.match(tail[token_match.end() :]):
+                continue
+            if _negated_in_clause(tail, token_match):
+                continue
+            if _negative_after_option(tail, token_match):
+                continue
+            if predicted == norm_answer_letter:
+                return predicted
+    return None
+
+
+def _check_answer_text(
+    llm_answer: str,
+    answer_text_norm: str,
+) -> tuple[bool, str] | None:
+    """Check for answer text match (strategy 5).
+
+    Returns tuple of (is_match, matched_region) if found, None otherwise.
+    """
+    answer_tokens = len(answer_text_norm.split())
+    buffer_tokens = answer_tokens + 15
+
+    llm_tokens = llm_answer.split()
+
+    beginning_tokens = llm_tokens[:buffer_tokens]
+    end_tokens = (
+        llm_tokens[-buffer_tokens:] if len(llm_tokens) > buffer_tokens else llm_tokens
+    )
+
+    beginning_region = " ".join(beginning_tokens)
+    end_region = " ".join(end_tokens)
+
+    flexible_answer = re.escape(answer_text_norm).replace(r"\ ", r"\s+")
+    pattern = re.compile(rf"(?<!\w){flexible_answer}(?!\w)", re.IGNORECASE)
+
+    match = pattern.search(beginning_region)
+    if match and not _negated_near(beginning_region, match):
+        return True, beginning_region
+
+    match = pattern.search(end_region)
+    if match and not _negated_near(end_region, match):
+        return True, end_region
+
+    return None
+
+
+def _check_token_strategies(
+    llm_answer: str,
+    prefix: str | None,
+    norm_answer_letter: str | None,
+    explicit_choice_found: bool,
+) -> tuple[str | None, str, bool]:
+    """Check anchored token and last token strategies (3 and 4).
+
+    Returns tuple of (predicted_answer, method, updated_explicit_choice_found).
+    Method is 'anchored_token', 'last_token', or 'none'.
+    """
+    # Strategy 3: Anchored token
+    predicted, found = _check_anchored_token(llm_answer, prefix, norm_answer_letter)
+    if found:
+        explicit_choice_found = True
+    if predicted is not None and predicted == norm_answer_letter:
+        return predicted, "anchored_token", explicit_choice_found
+
+    # Strategy 4: Last token in the answer tail
+    if not explicit_choice_found and norm_answer_letter:
+        predicted = _check_last_token(llm_answer, norm_answer_letter)
+        if predicted is not None:
+            return predicted, "last_token", explicit_choice_found
+
+    return None, "none", explicit_choice_found
+
+
+def multiple_choice_accuracy(
+    llm_answer: str,
+    answer_letter: str,
+    answer_text: str | None = None,
+    prefix: str | None = None,
+    accept_answer_text: bool = True,
+    strip_tex: bool = True,
+    return_details: bool = False,
+) -> bool | MCQAccuracyResult:
+    """Grade a multiple-choice answer with layered strategies.
+
+    Strategies (in order of priority):
+    1. Direct answer: Response is just the option letter/number
+    2. Leading option: "B. Answer text" at the start
+    3. Anchored token: Last occurrence of anchor phrases
+       like "final answer:", "answer is"
+    4. Last token: Take the last letter/number found in the tail region
+    5. Answer text: Match the full answer text (if long enough)
+
+    Args:
+        llm_answer: The model's response text
+        answer_letter: The correct answer letter/number (e.g., "C" or "3")
+        answer_text: The full correct answer text (optional)
+        prefix: Optional prefix to strip (e.g., "The answer is: ")
+        accept_answer_text: Whether to fall back to text matching
+        strip_tex: Whether to strip LaTeX formatting
+        return_details: If True, return MCQAccuracyResult dataclass instead of bool
+
+    Returns:
+        bool (if return_details=False) or MCQAccuracyResult (if return_details=True)
+    """
+
+    def _result(
+        is_correct: bool,
+        method: str,
+        predicted: str | None,
+        actual: str | None,
+    ) -> bool | MCQAccuracyResult:
+        """Helper to format return value."""
+        return (
+            is_correct
+            if not return_details
+            else MCQAccuracyResult(
+                is_correct=is_correct,
+                method=method,
+                matched_answer=predicted,
+                correct_answer=actual,
+            )
+        )
+
+    # Validate answer_letter before any early returns so invalid labels are
+    # always rejected consistently, regardless of whether llm_answer is empty.
+    norm_answer_letter = _norm_letter(answer_letter)
+    if norm_answer_letter is None:
+        raise ValueError(
+            f"Invalid answer_letter '{answer_letter}'. Must be a single letter or digit string."
+        )
+
+    if not llm_answer:
+        return _result(False, "none", None, norm_answer_letter)
+
+    # Normalize the response
+    llm_answer = strip_think_tags(llm_answer)
+
+    if strip_tex:
+        llm_answer = _strip_tex(llm_answer)
+        if answer_text:
+            answer_text = _strip_tex(answer_text)
+
+    llm_answer_original = llm_answer
+
+    # Normalize: casefold only (preserve whitespace structure for sentence detection)
+    llm_answer = nfkc_casefold(llm_answer)
+
+    answer_text_norm = nfkc_casefold(normalize_spaces(answer_text or ""))
+
+    explicit_choice_found = False
+
+    # Strategy 1: Only answer letter anywhere (without anchoring)
+    if norm_answer_letter == _norm_letter(llm_answer):
+        return _result(True, "direct_answer", llm_answer, norm_answer_letter)
+
+    # Strategy 2: Accept leading option token like "B. answer ..."
+    leading_match = LEADING_OPTION_PATTERN.match(llm_answer_original)
+    if leading_match and norm_answer_letter:
+        predicted = _norm_letter(leading_match.group(1))
+        if _token_kind_matches_answer_letter(predicted, norm_answer_letter):
+            explicit_choice_found = True
+        if predicted == norm_answer_letter:
+            return _result(True, "anchored_token", predicted, norm_answer_letter)
+
+    # Strategies 3 & 4: Anchored token and last token
+    predicted, method, explicit_choice_found = _check_token_strategies(
+        llm_answer, prefix, norm_answer_letter, explicit_choice_found
+    )
+    if predicted is not None:
+        return _result(True, method, predicted, norm_answer_letter)
+
+    # Strategy 5: Exact answer text match
+    if accept_answer_text and answer_text_norm and not explicit_choice_found:
+        result = _check_answer_text(llm_answer, answer_text_norm)
+        if result:
+            return _result(True, "answer_text", result[1], answer_text_norm)
+
+    return _result(False, "none", None, norm_answer_letter)
+
+
+async def accuracy_reward(
+    completion: Any,
+    answer: str,
+    info: dict[str, Any] | None = None,
+    parser: Any = None,
+    **kwargs: Any,
+) -> float:
+    """Verifiers reward function for multiple-choice accuracy.
+
+    Args:
+        completion: The model's completion (Messages or string)
+        answer: The correct answer letter
+        info: Optional dict with additional metadata (e.g., answer_text)
+        parser: Optional parser to extract the answer from completion
+        **kwargs: Additional arguments (ignored)
+
+    Returns:
+        1.0 if correct, 0.0 otherwise
+    """
+    # Extract the answer from completion
+    if parser is not None:
+        parsed = parser.parse_answer(completion) or ""
+    elif isinstance(completion, str):
+        parsed = completion
+    elif isinstance(completion, list):
+        # Assume it's a list of messages
+        parsed = ""
+        for msg in reversed(completion):
+            if isinstance(msg, dict) and msg.get("role") == "assistant":
+                parsed = msg.get("content", "")
+                break
+    else:
+        parsed = str(completion)
+
+    answer_text = info.get("answer_text") if info else None
+    is_correct = multiple_choice_accuracy(
+        llm_answer=parsed,
+        answer_letter=answer,
+        answer_text=answer_text,
+    )
+    return 1.0 if is_correct else 0.0

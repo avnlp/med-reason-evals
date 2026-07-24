@@ -16,8 +16,8 @@ from openai import OpenAI
 from verifiers.utils.data_utils import extract_boxed_answer
 
 from med_reason_evals.data.medqa import MedQADataset
-from med_reason_evals.verifiers.exact_match_reward import (
-    exact_match_reward_func,
+from med_reason_evals.verifiers.answer_correctness_reward import (
+    correct_answer_reward_func,
 )
 
 
@@ -52,7 +52,7 @@ def load_environment(
     parser = vf.ThinkParser(extract_fn=extract_boxed_answer)
 
     rubric = vf.Rubric(
-        funcs=[exact_match_reward_func, parser.get_format_reward_func()],
+        funcs=[correct_answer_reward_func, parser.get_format_reward_func()],
         weights=[1.0, 0.0],
         parser=parser,
     )
