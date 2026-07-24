@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "datasets",
+  "openai",
   "tenacity",
   "verifiers==0.1.9.post3",
   "deepeval",

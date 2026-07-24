@@ -121,11 +121,10 @@ class TestNormalizeAnswer:
     class TestSemanticMode:
         """Tests for 'semantic' normalization mode."""
 
-        def test_removes_articles(self):
-            """Articles should be removed."""
-            assert normalize_answer("the answer", mode="semantic") == "answer"
-            assert normalize_answer("a test", mode="semantic") == "test"
-            assert normalize_answer("an example", mode="semantic") == "example"
+        def test_preserves_medical_subtypes(self):
+            """Medical subtype letters (e.g., 'Influenza A') should be preserved."""
+            assert normalize_answer("Influenza A", mode="semantic") == "influenza a"
+            assert normalize_answer("type a", mode="semantic") == "type a"
 
         def test_removes_punctuation(self):
             """Punctuation should be removed."""
@@ -134,21 +133,24 @@ class TestNormalizeAnswer:
 
         def test_case_insensitive(self):
             """Should be case insensitive."""
-            assert normalize_answer("The Answer", mode="semantic") == "answer"
+            assert normalize_answer("DIABETES", mode="semantic") == "diabetes"
 
         def test_whitespace_normalized(self):
             """Whitespace should be normalized."""
-            assert normalize_answer("the   answer", mode="semantic") == "answer"
+            assert (
+                normalize_answer("myocardial   infarction", mode="semantic")
+                == "myocardial infarction"
+            )
 
         def test_empty_string(self):
             """Empty string should return empty."""
             assert normalize_answer("", mode="semantic") == ""
 
         def test_complex_sentence(self):
-            """Complex sentence with articles and punctuation."""
+            """Complex sentence with punctuation."""
             text = "The quick, brown fox jumps over a lazy dog!"
             result = normalize_answer(text, mode="semantic")
-            assert result == "quick brown fox jumps over lazy dog"
+            assert result == "the quick brown fox jumps over a lazy dog"
 
     class TestMcqMode:
         """Tests for 'mcq' normalization mode."""
