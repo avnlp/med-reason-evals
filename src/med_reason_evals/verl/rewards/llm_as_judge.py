@@ -67,7 +67,13 @@ async def judge_answer(
         True if the judge says the answer is correct.
     """
     template = judge_prompt or DEFAULT_JUDGE_PROMPT
-    uses_triple_quote_delimiter = '"""{prediction}"""' in template
+    uses_triple_quote_delimiter = bool(
+        re.search(
+            r'"""(?:(?!""").)*{prediction}(?:(?!""").)*"""',
+            template,
+            re.DOTALL,
+        )
+    )
 
     escaped_prediction = (
         _escape_triple_quote_delimiter(prediction)
