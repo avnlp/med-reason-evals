@@ -65,12 +65,7 @@ def compute_score(
     if answer_text:
         norm_text = nfkc_casefold(normalize_spaces(answer_text))
         norm_extracted = nfkc_casefold(normalize_spaces(answer))
-        # Substring match for answer text
-        if (
-            norm_text
-            and norm_extracted
-            and (norm_text in norm_extracted or norm_extracted in norm_text)
-        ):
+        if norm_text and norm_extracted and norm_text in norm_extracted:
             return score
 
     # Answer was extracted but incorrect

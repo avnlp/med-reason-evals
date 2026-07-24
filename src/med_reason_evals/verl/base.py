@@ -36,6 +36,7 @@ class GroqGenConfig:
     max_tokens: int = 2048
     temperature: float = 0.0
     sampling_args: dict[str, Any] = field(default_factory=dict)
+    max_concurrency: int = 10
 
 
 @dataclass
@@ -57,6 +58,7 @@ class JudgeConfig:
     max_tokens: int = 500
     temperature: float = 0.0
     sampling_args: dict[str, Any] = field(default_factory=dict)
+    max_concurrency: int = 10
 
 
 class BaseVerlEvaluator(ABC):
@@ -107,7 +109,6 @@ class BaseVerlEvaluator(ABC):
                 base_url=self.gen_config.base_url,
                 max_tokens=self.gen_config.max_tokens,
                 temperature=self.gen_config.temperature,
-                **self.gen_config.sampling_args,
             )
         return self._rollouts
 
@@ -142,15 +143,18 @@ class BaseVerlEvaluator(ABC):
         self,
         num_examples: int = 100,
         progress_interval: int = 10,
+        max_concurrency: int | None = None,
     ) -> dict[str, Any]:
         """Run evaluation on the dataset.
 
-        Iterates through the dataset, evaluates each example, and returns
-        aggregated results.
+        Iterates through the dataset, evaluates examples concurrently,
+        and returns aggregated results.
 
         Args:
             num_examples: Maximum number of examples to evaluate.
-            progress_interval: Print progress every N examples.
+            progress_interval: Print progress every N examples (must be > 0).
+            max_concurrency: Maximum concurrent evaluations. Defaults to
+                gen_config.max_concurrency.
 
         Returns:
             A dictionary with evaluation results including:
@@ -158,12 +162,34 @@ class BaseVerlEvaluator(ABC):
             - num_examples: Number of examples evaluated
             - avg_score: Average score across all examples
         """
+        import asyncio
+
+        if progress_interval <= 0:
+            progress_interval = num_examples
+
+        concurrency = (
+            max_concurrency
+            if max_concurrency is not None
+            else self.gen_config.max_concurrency
+        )
+        semaphore = asyncio.Semaphore(concurrency)
+
         dataset = self._load_dataset()
-        scores: list[float] = []
         count = 0
+        total_count = 0
+        total_score = 0.0
+        pending: list[asyncio.Task[float]] = []
+        max_attempts = num_examples * 10
 
         for example in dataset:
             if count >= num_examples:
+                break
+            total_count += 1
+            if total_count > max_attempts:
+                print(
+                    f"Warning: Reached {max_attempts} total rows without finding "
+                    f"{num_examples} valid examples; stopping after {count} valid."
+                )
                 break
 
             prompt = example.get("prompt", [])
@@ -173,27 +199,41 @@ class BaseVerlEvaluator(ABC):
             if not prompt or not ground_truth:
                 continue
 
-            score = await self._evaluate_example(prompt, ground_truth, metadata)
-            scores.append(score)
+            async def _scored_eval(
+                p=prompt,
+                gt=ground_truth,
+                meta=metadata,
+            ) -> float:
+                async with semaphore:
+                    return await self._evaluate_example(p, gt, meta)
+
+            task = asyncio.create_task(_scored_eval())
+            pending.append(task)
             count += 1
 
-            if count % progress_interval == 0:
-                avg = sum(scores) / len(scores) if scores else 0
+        if pending:
+            results = await asyncio.gather(*pending, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    print(f"Warning: Evaluation failed: {r}")
+                else:
+                    total_score += r
+
+            if count >= progress_interval:
+                avg = total_score / count
                 print(f"Processed {count} examples, avg score: {avg:.3f}")
 
-        avg_score = sum(scores) / len(scores) if scores else 0
-        return self._build_result(scores, avg_score)
+        avg_score = total_score / count if count else 0
+        return self._build_result(avg_score)
 
     @abstractmethod
     def _build_result(
         self,
-        scores: list[float],
         avg_score: float,
     ) -> dict[str, Any]:
         """Build the result dictionary.
 
         Args:
-            scores: List of all individual scores.
             avg_score: The average score.
 
         Returns:
@@ -248,7 +288,10 @@ class BaseMCQEvaluator(BaseVerlEvaluator):
         )
 
         messages = self._build_messages(prompt)
-        completion = await self.rollouts.generate(messages=messages)
+        completion = await self.rollouts.generate(
+            messages=messages,
+            **self.gen_config.sampling_args,
+        )
         return mcq_score(completion, ground_truth)
 
     def _build_messages(self, prompt: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -308,5 +351,6 @@ class BaseJudgeEvaluator(BaseVerlEvaluator):
             self._judge_client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=self.judge_config.base_url,
+                max_retries=0,
             )
         return self._judge_client

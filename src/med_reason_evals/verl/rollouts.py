@@ -67,6 +67,7 @@ class GroqRollouts:
         self._client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
+            max_retries=0,
             **kwargs,
         )
 
@@ -94,11 +95,16 @@ class GroqRollouts:
             self._client.chat.completions.create,
             model=model or self.model,
             messages=messages,  # type: ignore[arg-type]
-            max_tokens=max_tokens or self.max_tokens,
+            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
             temperature=temperature if temperature is not None else self.temperature,
             **kwargs,
         )
 
+        if not response.choices:
+            raise RuntimeError(
+                "Groq API returned an empty choices list. "
+                "This may indicate a provider or protocol failure."
+            )
         return response.choices[0].message.content or ""
 
     async def generate_batch(
@@ -107,6 +113,7 @@ class GroqRollouts:
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        max_concurrency: int = 10,
         **kwargs: Any,
     ) -> list[str]:
         """Generate completions for a batch of message lists.
@@ -116,24 +123,42 @@ class GroqRollouts:
             model: Override the default model for this request.
             max_tokens: Override the default max_tokens for this request.
             temperature: Override the default temperature for this request.
+            max_concurrency: Maximum concurrent API requests.
             **kwargs: Additional arguments passed to each API call.
 
         Returns:
             List of generated completion texts.
+
+        Raises:
+            RuntimeError: If any generation fails; pending tasks are cancelled.
         """
         import asyncio
 
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def _bounded_generate(messages: list[dict[str, str]]) -> str:
+            async with semaphore:
+                return await self.generate(
+                    messages=messages,
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    **kwargs,
+                )
+
         tasks = [
-            self.generate(
-                messages=messages,
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                **kwargs,
-            )
+            asyncio.create_task(_bounded_generate(messages))
             for messages in messages_batch
         ]
-        return await asyncio.gather(*tasks)
+
+        try:
+            return await asyncio.gather(*tasks)
+        except Exception:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
 
 def get_default_rollouts() -> GroqRollouts:

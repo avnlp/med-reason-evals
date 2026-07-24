@@ -41,7 +41,7 @@ score = mcq_score(solution_text, ground_truth)
 
 ## Supported datasets
 
-See [../../../README.md](../../../README.md) for the full dataset table and links.
+See [../../../../README.md](../../../../README.md) for the full dataset table and links.
 
 ## Directory map
 

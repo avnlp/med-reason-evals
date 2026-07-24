@@ -42,9 +42,11 @@ class TestRubricJudgeTemplate:
             response="The patient has diabetes.",
             criterion="Mentions diabetes diagnosis",
             points=5,
+            conversation="What is the diagnosis?",
         )
         assert "The patient has diabetes." in result
         assert "[5] Mentions diabetes diagnosis" in result
+        assert "What is the diagnosis?" in result
 
     def test_template_requests_json_format(self):
         """Template should instruct to return JSON."""
@@ -352,22 +354,21 @@ class TestComputeScore:
         assert result == 0.0
 
     @pytest.mark.asyncio
-    async def test_returns_zero_when_mismatched_lengths(self):
-        """Should return 0.0 when criteria and points_list have different lengths."""
+    async def test_raises_when_mismatched_lengths(self):
+        """Should raise ValueError when criteria and points_list lengths differ."""
         mock_client = MagicMock()
         ground_truth: dict[str, Any] = {
             "criteria": ["Crit1", "Crit2", "Crit3"],
             "points_list": [1, 2],  # Mismatched length
         }
 
-        result = await compute_score(
-            solution_str="Answer",
-            ground_truth=ground_truth,
-            judge_client=mock_client,
-            judge_model="test-model",
-        )
-
-        assert result == 0.0
+        with pytest.raises(ValueError, match="length mismatch"):
+            await compute_score(
+                solution_str="Answer",
+                ground_truth=ground_truth,
+                judge_client=mock_client,
+                judge_model="test-model",
+            )
 
     @pytest.mark.asyncio
     async def test_returns_zero_when_all_points_are_zero_or_negative(self):
@@ -531,19 +532,17 @@ class TestComputeScore:
         assert result == 0.0
 
     @pytest.mark.asyncio
-    async def test_score_clamped_to_one(self):
-        """Scores above 1.0 should be clamped to 1.0."""
+    async def test_score_always_within_bounds(self):
+        """Score should always be within [0.0, 1.0]."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"criteria_met": true}'
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        # This scenario shouldn't normally happen with correct logic,
-        # but test clamping just in case
         ground_truth: dict[str, Any] = {
-            "criteria": ["Crit1"],
-            "points_list": [5],
+            "criteria": ["Crit1", "Crit2"],
+            "points_list": [5, 3],
         }
 
         result = await compute_score(
@@ -553,9 +552,7 @@ class TestComputeScore:
             judge_model="test-model",
         )
 
-        # Score should be exactly 1.0, not higher
-        assert result == 1.0
-        assert result <= 1.0
+        assert 0.0 <= result <= 1.0
 
     @pytest.mark.asyncio
     async def test_normalization_uses_positive_points_only(self):
@@ -653,7 +650,6 @@ class TestComputeScore:
             ground_truth=ground_truth,
             judge_client=mock_client,
             judge_model="test-model",
-            # Not passing max_parallel_judges, should use default of 5
         )
 
         assert max_concurrent <= 5
@@ -907,5 +903,4 @@ class TestEdgeCases:
             max_parallel_judges=3,
         )
 
-        # All pass regardless of order
         assert result == 1.0

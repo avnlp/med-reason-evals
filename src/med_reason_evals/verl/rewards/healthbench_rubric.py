@@ -34,6 +34,9 @@ from med_reason_evals.utils.retry import call_with_retry
 
 RUBRIC_JUDGE_TEMPLATE = """Your job is to evaluate a response against a rubric criterion.
 
+# Question/Context
+{conversation}
+
 # Response
 {response}
 
@@ -55,6 +58,7 @@ async def evaluate_criterion(
     judge_client: AsyncOpenAI,
     judge_model: str,
     semaphore: asyncio.Semaphore,
+    conversation: str = "",
     max_tokens: int = 500,
     temperature: float = 0.0,
 ) -> dict[str, Any]:
@@ -67,6 +71,7 @@ async def evaluate_criterion(
         judge_client: The OpenAI client for judging.
         judge_model: The model to use for judging.
         semaphore: Semaphore to limit concurrent requests.
+        conversation: The original question/context prompt.
         max_tokens: Maximum tokens for judge response.
         temperature: Sampling temperature.
 
@@ -78,6 +83,7 @@ async def evaluate_criterion(
             response=response,
             criterion=criterion,
             points=points,
+            conversation=conversation,
         )
 
         resp = await call_with_retry(
@@ -91,8 +97,17 @@ async def evaluate_criterion(
         judge_response = resp.choices[0].message.content or ""
         parsed = parse_json_response(judge_response)
 
+        if not isinstance(parsed, dict):
+            parsed = {}
+
+        raw_met = parsed.get("criteria_met", False)
+        if isinstance(raw_met, str):
+            criteria_met = raw_met.strip().lower() in ("yes", "true", "1")
+        else:
+            criteria_met = bool(raw_met)
+
         return {
-            "criteria_met": bool(parsed.get("criteria_met", False)),
+            "criteria_met": criteria_met,
             "points": points,
             "explanation": parsed.get("explanation", ""),
         }
@@ -106,6 +121,7 @@ async def compute_score(
     max_parallel_judges: int = 5,
     max_tokens: int = 500,
     temperature: float = 0.0,
+    conversation: str = "",
 ) -> float:
     """Compute the reward score using multi-criteria rubric evaluation.
 
@@ -120,6 +136,7 @@ async def compute_score(
         max_parallel_judges: Maximum concurrent judge requests.
         max_tokens: Maximum tokens for each judge response.
         temperature: Sampling temperature.
+        conversation: The original question/prompt context.
 
     Returns:
         Normalized score between 0.0 and 1.0.
@@ -131,12 +148,19 @@ async def compute_score(
         return 0.0
 
     if len(criteria) != len(points_list):
-        return 0.0
+        raise ValueError(
+            f"Rubric criteria/points_list length mismatch: "
+            f"{len(criteria)} criteria vs {len(points_list)} points. "
+            f"Each criterion must have a corresponding point value."
+        )
 
     # Calculate total positive points
     total_positive = sum(p for p in points_list if p > 0)
     if total_positive == 0:
         return 0.0
+
+    if max_parallel_judges < 1:
+        raise ValueError(f"max_parallel_judges must be >= 1, got {max_parallel_judges}")
 
     # Evaluate all criteria in parallel with semaphore
     semaphore = asyncio.Semaphore(max_parallel_judges)
@@ -148,6 +172,7 @@ async def compute_score(
             judge_client=judge_client,
             judge_model=judge_model,
             semaphore=semaphore,
+            conversation=conversation,
             max_tokens=max_tokens,
             temperature=temperature,
         )

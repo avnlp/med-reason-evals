@@ -1,10 +1,13 @@
-"""Verl reward function for semantic equivalence.
+"""Verl reward function for normalized medical text matching.
 
 This module provides reward computation for tasks where the answer
-needs to be semantically equivalent (e.g., medical diagnosis comparison).
+needs to be compared using normalized text matching (e.g., medical diagnosis
+comparison).
 
 Unlike exact string matching, this module normalizes answers before comparison
 using medical text normalization (case-folding, punctuation removal, etc.).
+The comparison is exact/substring matching after normalization, not semantic
+similarity via embeddings.
 
 Two matching strategies are supported:
     - exact: Answers must match exactly after normalization.
@@ -16,6 +19,7 @@ Example:
     0.0  # Extracts "AMI", which doesn't match after normalization
 """
 
+import re
 from typing import Any
 
 from med_reason_evals.utils.extraction import extract_answer
@@ -65,7 +69,13 @@ def substring_match(prediction: str, golden_answers: str | list[str]) -> bool:
 
     for golden in golden_answers:
         normalized_golden = normalize_answer(golden, mode="semantic")
-        if normalized_golden and normalized_golden in normalized_prediction:
+        if not normalized_golden:
+            continue
+        pattern = re.compile(
+            rf"\b{re.escape(normalized_golden)}\b",
+            re.IGNORECASE,
+        )
+        if pattern.search(normalized_prediction):
             return True
 
     return False
@@ -89,7 +99,13 @@ def compute_score(
 
     Returns:
         The reward score (0.0 to 1.0).
+
+    Raises:
+        ValueError: If an unknown method is specified.
     """
+    if method not in ("exact", "substring"):
+        raise ValueError(f"Unknown method: {method}. Expected 'exact' or 'substring'.")
+
     answer = extract_answer(solution_str)
     if answer is None:
         return 0.0
@@ -102,11 +118,8 @@ def compute_score(
     if method == "exact":
         if exact_match(answer, golden):
             return score
-    elif method == "substring":
-        if substring_match(answer, golden):
-            return score
-    else:
-        raise ValueError(f"Unknown method: {method}")
+    elif method == "substring" and substring_match(answer, golden):
+        return score
 
     # Answer was extracted but incorrect
     return format_score

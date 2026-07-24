@@ -25,6 +25,17 @@ _ANSWER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+
+_FREE_FORM_PATTERN = re.compile(
+    r"(?:\bfinal\s+answer\b|\banswer\b|\ban\s+is\b|\bdiagnosis\s+is\b"
+    r"|\bconclusion\b|\bin\s+conclusion\b|\bmost\s+likely\b"
+    r"|\bbest[-\s]+supported\s+answer\b)\s*[:\-–—]?\s*(?:is\s*)?"
+    r"\s*(?:[*_`~]+\s*)*"
+    r"([A-Za-z0-9][A-Za-z\s,;:/\-–—()]+)"
+    r"(?:\.|\n|$)",
+    re.IGNORECASE,
+)
+
 _TOKEN_PATTERN = re.compile(
     r"(?:\(|\b)([A-Za-z]|\d{1,2})(?:\)|\b)[\s.!?]*$",
 )
@@ -80,7 +91,7 @@ def extract_xml_answer(text: str, field: str = "answer") -> str | None:
     return matches[-1].group(1).strip()
 
 
-def extract_answer(text: str | None) -> str | None:
+def extract_answer(text: str | None) -> str | None:  # noqa: PLR0911
     """Extract a final answer from a model response using ordered heuristics.
 
     The strategy intentionally tries highly structured markers first to avoid
@@ -95,7 +106,6 @@ def extract_answer(text: str | None) -> str | None:
     if not text:
         return None
 
-    # Trim long responses to reduce regex overhead and avoid early chatter.
     search_text = text[-500:] if len(text) > 500 else text
 
     # Strategy 1: XML tags (highest priority).
@@ -108,10 +118,15 @@ def extract_answer(text: str | None) -> str | None:
     if boxed_result != search_text:
         return boxed_result
 
-    # Strategy 3: Anchored patterns.
+    # Strategy 3: Anchored patterns (captures single letter/digit).
     anchored_matches = list(_ANSWER_PATTERN.finditer(search_text))
     if anchored_matches:
         return anchored_matches[-1].group(1).strip()
+
+    # Strategy 3b: Free-form text after anchor phrases.
+    anchored_freeform = list(_FREE_FORM_PATTERN.finditer(search_text))
+    if anchored_freeform:
+        return anchored_freeform[-1].group(1).strip()
 
     # Strategy 4: Last token (lowest priority).
     tokens = list(_TOKEN_PATTERN.finditer(search_text))

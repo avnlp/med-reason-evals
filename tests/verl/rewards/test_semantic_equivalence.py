@@ -24,7 +24,8 @@ class TestExactMatch:
 
     def test_normalization_applied(self):
         """Normalization should be applied before comparison."""
-        assert exact_match("THE DIABETES", "diabetes")
+        assert exact_match("DIABETES", "diabetes")
+        assert exact_match("myocardial infarction", "MYOCARDIAL INFARCTION")
 
 
 class TestSubstringMatch:

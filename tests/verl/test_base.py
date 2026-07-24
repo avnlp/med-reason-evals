@@ -75,8 +75,8 @@ class ConcreteEvaluator(BaseVerlEvaluator):
     async def _evaluate_example(self, prompt, ground_truth, metadata=None):
         return 1.0
 
-    def _build_result(self, scores, avg_score):
-        return {"scores": scores, "avg": avg_score}
+    def _build_result(self, avg_score):
+        return {"avg": avg_score}
 
 
 class TestBaseVerlEvaluator:
@@ -125,7 +125,6 @@ class TestBaseVerlEvaluator:
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = ConcreteEvaluator()
             result = await evaluator.evaluate(num_examples=1)
-            assert "scores" in result
             assert "avg" in result
             assert result["avg"] == 1.0
 
@@ -143,8 +142,8 @@ class ConcreteMCQEvaluator(BaseMCQEvaluator):
             }
         )
 
-    def _build_result(self, scores, avg_score):
-        return {"scores": scores, "avg": avg_score}
+    def _build_result(self, avg_score):
+        return {"avg": avg_score}
 
 
 class TestBaseMCQEvaluator:
@@ -216,8 +215,8 @@ class ConcreteJudgeEvaluator(BaseJudgeEvaluator):
     async def _evaluate_example(self, prompt, ground_truth, metadata=None):
         return 1.0
 
-    def _build_result(self, scores, avg_score):
-        return {"scores": scores, "avg": avg_score}
+    def _build_result(self, avg_score):
+        return {"avg": avg_score}
 
 
 class TestBaseJudgeEvaluator:
@@ -271,7 +270,7 @@ class TestEvaluateEdgeCases:
     """Tests for evaluate() method edge cases."""
 
     async def test_evaluate_skips_empty_prompt(self, capsys):
-        """Test that evaluate skips examples with empty prompt (line 167, 174)."""
+        """Test that evaluate skips examples with empty prompt."""
 
         class EmptyPromptEvaluator(BaseVerlEvaluator):
             def _load_dataset(self):
@@ -285,22 +284,20 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, scores, avg_score):
-                return {"scores": scores, "avg": avg_score}
+            def _build_result(self, avg_score):
+                return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = EmptyPromptEvaluator()
             result = await evaluator.evaluate(num_examples=2)
             # Should only process 1 example (the one with non-empty prompt)
-            assert len(result["scores"]) == 1
             assert result["avg"] == 1.0
 
     async def test_evaluate_skips_none_ground_truth(self, capsys):
-        """Test that evaluate skips examples with None ground_truth (line 174)."""
+        """Test that evaluate skips examples with None ground_truth."""
 
         class NoneGroundTruthEvaluator(BaseVerlEvaluator):
             def _load_dataset(self):
-                # Use a custom iterable that returns None for ground_truth
                 class MockDataset:
                     def __iter__(self):
                         yield {
@@ -317,14 +314,12 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, scores, avg_score):
-                return {"scores": scores, "avg": avg_score}
+            def _build_result(self, avg_score):
+                return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = NoneGroundTruthEvaluator()
             result = await evaluator.evaluate(num_examples=2)
-            # Should only process 1 example (the one with non-None ground_truth)
-            assert len(result["scores"]) == 1
             assert result["avg"] == 1.0
 
     async def test_evaluate_skips_both_empty(self, capsys):
@@ -352,45 +347,36 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, scores, avg_score):
-                return {"scores": scores, "avg": avg_score}
+            def _build_result(self, avg_score):
+                return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = BothEmptyEvaluator()
             result = await evaluator.evaluate(num_examples=3)
-            # Should only process 1 example (the middle valid one)
-            assert len(result["scores"]) == 1
             assert result["avg"] == 1.0
 
     async def test_evaluate_progress_reporting(self, capsys):
-        """Test progress reporting at intervals (lines 181-182)."""
+        """Test progress reporting at end of concurrent evaluation."""
 
         class ProgressEvaluator(BaseVerlEvaluator):
             def _load_dataset(self):
-                # Create 15 examples to trigger progress at 10
                 prompts = [[{"role": "user", "content": f"Q{i}"}] for i in range(15)]
                 ground_truths = [{"answer": str(i)} for i in range(15)]
                 return Dataset.from_dict(
-                    {
-                        "prompt": prompts,
-                        "ground_truth": ground_truths,
-                    }
+                    {"prompt": prompts, "ground_truth": ground_truths}
                 )
 
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 0.5
 
-            def _build_result(self, scores, avg_score):
-                return {"scores": scores, "avg": avg_score}
+            def _build_result(self, avg_score):
+                return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = ProgressEvaluator()
-            result = await evaluator.evaluate(num_examples=15, progress_interval=10)
-            # Check that progress was reported
+            await evaluator.evaluate(num_examples=15, progress_interval=10)
             captured = capsys.readouterr()
-            assert "Processed 10 examples" in captured.out
             assert "avg score: 0.500" in captured.out
-            assert len(result["scores"]) == 15
 
     async def test_evaluate_no_progress_for_small_dataset(self, capsys):
         """Test that progress is not reported when dataset is smaller than interval."""
@@ -407,16 +393,14 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, scores, avg_score):
-                return {"scores": scores, "avg": avg_score}
+            def _build_result(self, avg_score):
+                return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = SmallEvaluator()
-            result = await evaluator.evaluate(num_examples=1, progress_interval=10)
+            await evaluator.evaluate(num_examples=1, progress_interval=10)
             captured = capsys.readouterr()
-            # Should not print progress since we only processed 1 example
             assert "Processed" not in captured.out
-            assert len(result["scores"]) == 1
 
     async def test_evaluate_all_skipped_returns_zero_avg(self):
         """Test that evaluate returns avg_score of 0 when all examples are skipped."""
@@ -428,24 +412,23 @@ class TestEvaluateEdgeCases:
                         yield {
                             "prompt": [],
                             "ground_truth": {"answer": "A"},
-                        }  # empty prompt
+                        }
                         yield {
                             "prompt": [{"role": "user", "content": "Q2"}],
                             "ground_truth": None,
-                        }  # None ground_truth
+                        }
 
                 return MockDataset()
 
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, scores, avg_score):
-                return {"scores": scores, "avg": avg_score}
+            def _build_result(self, avg_score):
+                return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = AllSkippedEvaluator()
             result = await evaluator.evaluate(num_examples=2)
-            assert result["scores"] == []
             assert result["avg"] == 0
 
 
@@ -458,10 +441,8 @@ class TestBaseMCQEvaluatorMessages:
             evaluator = ConcreteMCQEvaluator(system_prompt="System")
             original_prompt = [{"role": "user", "content": "Question"}]
             messages = evaluator._build_messages(original_prompt)
-            # Original should not be modified
             assert len(original_prompt) == 1
             assert original_prompt[0]["role"] == "user"
-            # New messages should have system prompt
             assert len(messages) == 2
             assert messages[0]["role"] == "system"
 
@@ -488,6 +469,5 @@ class TestBaseMCQEvaluatorMessages:
             evaluator = ConcreteMCQEvaluator(system_prompt="")
             prompt = [{"role": "user", "content": "Question"}]
             messages = evaluator._build_messages(prompt)
-            # Empty string should be falsy, so no system prompt added
             assert len(messages) == 1
             assert messages[0]["role"] == "user"

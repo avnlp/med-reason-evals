@@ -74,7 +74,8 @@ def normalize_answer(text: str | None, mode: str = "basic") -> str:
         return normalized
 
     if mode == "semantic":
-        normalized = re.sub(r"\b(a|an|the)\b", "", normalized)
+        normalized = normalized.replace("-", " ")
+        # Remove punctuation characters.
         normalized = "".join(
             char
             for char in normalized

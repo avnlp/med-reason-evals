@@ -441,14 +441,17 @@ class TestComputeScore:
         assert result == 0.25
 
     @pytest.mark.asyncio
-    async def test_no_answer_extracted_returns_zero(self, mock_judge_client):
-        """No answer extracted should return 0.0."""
+    async def test_no_answer_extracted_falls_back_to_solution(self, mock_judge_client):
+        """No answer extracted should fall back to the full solution text."""
+        mock_judge_client.set_default_response("no")
+
         result = await compute_score(
             solution_str="This is just some text without an answer",
             ground_truth={"target": "diabetes"},
             judge_client=mock_judge_client,
         )
 
+        # Falls back to full solution, judge returns "no", so format_score
         assert result == 0.0
 
     @pytest.mark.asyncio
@@ -684,13 +687,14 @@ class TestMakeJudgeReward:
 
     @pytest.mark.asyncio
     async def test_custom_extractor_returns_none(self, mock_judge_client):
-        """Custom extractor returning None should return 0.0."""
+        """Custom extractor returning None falls back to full solution."""
         template = "Compare: {prediction} vs {ground_truth}"
 
         def failing_extractor(text: str) -> str | None:
             return None
 
         reward_fn = make_judge_reward(template, failing_extractor)
+        mock_judge_client.set_default_response("no")
 
         result = await reward_fn(
             solution_str="Some text without the expected pattern",
@@ -698,6 +702,7 @@ class TestMakeJudgeReward:
             judge_client=mock_judge_client,
         )
 
+        # Falls back to full solution, judge says "no", so format_score
         assert result == 0.0
 
     @pytest.mark.asyncio
@@ -880,8 +885,10 @@ Final answer: A""",
         assert result == 1.0
 
     @pytest.mark.asyncio
-    async def test_no_extractable_answer(self, mock_judge_client):
-        """No extractable answer should return 0.0 without calling judge."""
+    async def test_no_extractable_answer_falls_back_to_solution(
+        self, mock_judge_client
+    ):
+        """No extractable answer falls back to full solution text."""
         call_count = 0
 
         async def counting_create(*, model, messages, **kwargs):
@@ -903,8 +910,9 @@ Final answer: A""",
             judge_client=mock_judge_client,
         )
 
-        assert result == 0.0
-        assert call_count == 0  # Judge should not be called
+        # Falls back to full solution, judge says "yes", so score
+        assert result == 1.0
+        assert call_count == 1  # Judge IS now called with full solution
 
     @pytest.mark.asyncio
     async def test_pubhealthbench_style_true_false(self, mock_judge_client):

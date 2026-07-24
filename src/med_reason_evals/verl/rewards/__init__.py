@@ -10,8 +10,17 @@ Reward Functions:
     - healthbench_rubric: Multi-criteria rubric evaluation with parallel judging.
     - hybrid_pubhealthbench: Routes between MCQ and judge-based evaluation.
 
-All reward functions follow a consistent signature:
-    compute_score(solution_str, ground_truth, **kwargs) -> float
+Most reward functions follow a similar async signature:
+    async compute_score(solution_str, ground_truth, **kwargs) -> float
+
+Synchronous exceptions:
+    - mcq_score (sync): Simple rule-based MCQ accuracy.
+    - semantic_score (sync): Normalized text matching.
+
+Async functions (require await):
+    - llm_judge_score: Requires a judge_client and judge_model.
+    - healthbench_score: Requires a judge_client and judge_model.
+    - pubhealthbench_score: Requires a judge_client and judge_model.
 
 Returns a score between 0.0 and 1.0, where 1.0 indicates a correct answer.
 """
@@ -37,6 +46,9 @@ from med_reason_evals.verl.rewards.multiple_choice_accuracy import (
     compute_score as mcq_accuracy_score,
 )
 from med_reason_evals.verl.rewards.multiple_choice_accuracy import (
+    compute_score as mcq_score,
+)
+from med_reason_evals.verl.rewards.multiple_choice_accuracy import (
     extract_answer as mcq_extract_answer,
 )
 from med_reason_evals.verl.rewards.multiple_choice_accuracy import (
@@ -54,6 +66,7 @@ from med_reason_evals.verl.rewards.semantic_equivalence import (
 __all__ = [
     # MCQ Accuracy
     "mcq_accuracy_score",
+    "mcq_score",
     "mcq_extract_answer",
     "mcq_normalize_answer",
     # LLM-as-Judge

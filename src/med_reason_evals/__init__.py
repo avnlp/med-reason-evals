@@ -1,3 +1,6 @@
 """Medical Reasoning Evaluation Package."""
 
-import med_reason_evals.verl  # noqa: F401
+# The verl subpackage requires openai and is imported explicitly by users.
+# Import it here only when needed:
+#   from med_reason_evals import verl
+# This avoids forcing an unconditional openai dependency on all consumers.

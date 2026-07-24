@@ -17,10 +17,10 @@ This module provides an async evaluation path that streams datasets, generates r
 
 ```python
 import asyncio
-from med_reason_evals.verl import MedQAEvaluator
+from med_reason_evals.verl import GroqRollouts
 
-evaluator = MedQAEvaluator(split="test")
-results = asyncio.run(evaluator.evaluate(num_examples=100))
+rollouts = GroqRollouts()
+completion = await rollouts.generate(messages=[{"role": "user", "content": "..."}])
 ```
 
 ## Inputs and outputs
@@ -43,7 +43,7 @@ results = asyncio.run(evaluator.evaluate(num_examples=100))
 
 ## Supported datasets
 
-See [../../README.md](../../README.md) for the full dataset table and links.
+See [../../../README.md](../../../README.md) for the full dataset table and links.
 
 ## Directory map
 
@@ -52,8 +52,7 @@ verl/
 ├── __init__.py   # Evaluator exports
 ├── base.py       # Shared evaluator behavior
 ├── rollouts.py   # Groq-backed generation helpers
-├── rewards/      # Scoring functions
-└── *.py          # Dataset-specific evaluators
+└── rewards/      # Scoring functions
 ```
 
 ## References

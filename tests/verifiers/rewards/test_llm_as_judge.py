@@ -79,7 +79,6 @@ class TestParseYesNo:
 
     def test_yesterday_false_positive(self):
         """'yesterday' should NOT be parsed as yes (strictness test)."""
-        # The \b word boundary in the regex should prevent this
         result = parse_yes_no("yesterday")
         assert result is None or result is False
 
@@ -131,7 +130,6 @@ class TestParseYesNo:
 
     def test_json_criteria_met_priority_over_correct(self):
         """criteria_met should be checked before correct."""
-        # When both are present, criteria_met should take priority
         assert parse_yes_no('{"criteria_met": true, "correct": false}') is True
         assert parse_yes_no('{"criteria_met": false, "correct": true}') is False
 
@@ -142,7 +140,6 @@ class TestParseYesNo:
 
     def test_yes_no_not_at_start_returns_none(self):
         """yes/no not at start should return None (strict anchoring)."""
-        # The regex anchors to start, so these should not match
         result = parse_yes_no("I think yes")
         assert result is None
 
@@ -238,9 +235,6 @@ class TestBinaryJudgeRewardFromTemplate:
         )
 
         sent_prompt = received_kwargs["prompt"]
-        # The literal three-quote sequence from the prediction must not survive
-        # into the prompt sent to the judge: only the two """ delimiters the
-        # template itself adds should remain.
         assert sent_prompt.count('"""') == 2
 
     @pytest.mark.asyncio
@@ -403,8 +397,6 @@ class TestBinaryJudgeRewardFromTemplate:
         assert received_prompt is not None
         assert "hypertension" in received_prompt
         assert "diabetes" in received_prompt
-        # The prediction is untrusted model output: it must be wrapped in
-        # delimiters and the judge must be told to ignore embedded instructions.
         assert '"""hypertension"""' in received_prompt
         assert "ignore" in received_prompt.lower()
 
@@ -758,10 +750,6 @@ class TestEdgeCases:
 
         assert "prompt" in received_kwargs
         assert "completion" in received_kwargs
-        # judge() must receive the ORIGINAL completion, not the extracted
-        # `prediction` string: JudgeRubric.judge() does its own
-        # parser.parse_answer(completion) internally, and handing it an
-        # already-extracted plain string breaks XMLParser-style re-parsing.
         assert received_kwargs["completion"] == completion
         assert received_kwargs["completion"] != "test_prediction"
         assert "answer" in received_kwargs

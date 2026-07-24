@@ -55,12 +55,13 @@ class TestComputeScore:
             mock_judge.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_compute_score_default_mcq(self):
-        """Empty metadata should default to MCQ scoring."""
+    async def test_compute_score_default_judge(self):
+        """Empty metadata should default to judge scoring."""
         with patch(
-            "med_reason_evals.verl.rewards.hybrid_pubhealthbench.mcq_score",
+            "med_reason_evals.verl.rewards.hybrid_pubhealthbench.judge_score",
+            new_callable=AsyncMock,
             return_value=0.0,
-        ) as mock_mcq:
+        ) as mock_judge:
             result = await compute_score(
                 solution_str="<answer>B</answer>",
                 ground_truth={"answer": "A"},
@@ -69,7 +70,7 @@ class TestComputeScore:
             )
 
             assert result == 0.0
-            mock_mcq.assert_called_once()
+            mock_judge.assert_called_once()
 
     def test_judge_template_constant(self):
         """Verify the judge template contains expected placeholders."""
