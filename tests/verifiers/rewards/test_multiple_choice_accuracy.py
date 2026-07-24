@@ -112,6 +112,13 @@ class TestMultipleChoiceAccuracy:
         with pytest.raises(ValueError):
             multiple_choice_accuracy("C", "ABC", "Option")
 
+    def test_invalid_answer_letter_raises_even_when_completion_empty(self):
+        """Invalid answer_letter should raise even if llm_answer is empty."""
+        with pytest.raises(ValueError):
+            multiple_choice_accuracy("", "ABC", "Option")
+        with pytest.raises(ValueError):
+            multiple_choice_accuracy(None, "ABC", "Option")  # type: ignore
+
     def test_numeric_options(self):
         """Numeric options (1, 2, 3) should work."""
         assert multiple_choice_accuracy("The answer is 2", "2", "Second option")
@@ -159,9 +166,19 @@ class TestStripTex:
 
     def test_strip_tex_success(self):
         """Test _strip_tex removes LaTeX formatting when pylatexenc is available."""
-        result = _strip_tex(r"$\frac{1}{2}$")
-        # Should return text without LaTeX or original if pylatexenc fails
+        text = r"$\frac{1}{2}$"
+        result = _strip_tex(text)
         assert isinstance(result, str)
+        try:
+            import pylatexenc  # noqa: F401
+        except ImportError:
+            # pylatexenc not installed: _strip_tex must fall back to the original text.
+            assert result == text
+        else:
+            # pylatexenc installed: LaTeX markup should actually be converted away.
+            assert result != text
+            assert "\\frac" not in result
+            assert "$" not in result
 
     def test_strip_tex_import_failure(self, mocker):
         """Test _strip_tex returns original when pylatexenc import fails (Line 43)."""
@@ -186,29 +203,35 @@ class TestStripTex:
 
     def test_strip_tex_runtime_exception(self, mocker):
         """Test _strip_tex returns original when LatexNodes2Text raises exception."""
-        # Import the module to patch
-        import med_reason_evals.verifiers.rewards.multiple_choice_accuracy as mc_module
+        # _strip_tex does a *local* `from pylatexenc.latex2text import
+        # LatexNodes2Text` inside the function body, so patching an attribute
+        # on this module has no effect on it. Instead inject a fake
+        # `pylatexenc.latex2text` module into sys.modules (this also works
+        # when the real pylatexenc package isn't installed) so the local
+        # import resolves to our mock.
+        import sys
+        import types
 
-        # Store original if it exists
-        original = getattr(mc_module, "LatexNodes2Text", None)
-
-        # Create mock that raises exception
         class MockLatexNodes2Text:
             def __init__(self, *args, **kwargs):
                 raise Exception("Latex parsing error")
 
-        # Patch the class in the module
-        mc_module.LatexNodes2Text = MockLatexNodes2Text  # type: ignore
-        try:
-            text = r"$\frac{1}{2}$"
-            result = _strip_tex(text)
-            assert result == text
-        finally:
-            # Restore original
-            if original:
-                mc_module.LatexNodes2Text = original  # type: ignore
-            else:
-                delattr(mc_module, "LatexNodes2Text")
+        fake_latex2text = types.ModuleType("pylatexenc.latex2text")
+        fake_latex2text.LatexNodes2Text = MockLatexNodes2Text  # type: ignore
+        fake_pylatexenc = types.ModuleType("pylatexenc")
+        fake_pylatexenc.latex2text = fake_latex2text  # type: ignore
+
+        mocker.patch.dict(
+            sys.modules,
+            {
+                "pylatexenc": fake_pylatexenc,
+                "pylatexenc.latex2text": fake_latex2text,
+            },
+        )
+
+        text = r"$\frac{1}{2}$"
+        result = _strip_tex(text)
+        assert result == text
 
 
 class TestTokenKindMatchesAnswerLetter:
@@ -487,9 +510,13 @@ class TestCheckTokenStrategies:
         result = multiple_choice_accuracy(
             llm_answer, "C", "Some answer text", return_details=True
         )
-        # Since no token strategies match, should try answer text or return none
+        # Neither the answer letter nor the answer text appear in llm_answer,
+        # so grading must fail outright, not silently "succeed" via some
+        # token strategy.
         assert isinstance(result, MCQAccuracyResult)
-        # Method could be 'none' or 'answer_text' depending on answer text match
+        assert result.is_correct is False
+        assert result.method == "none"
+        assert result.matched_answer is None
 
     def test_check_token_strategies_anchored_match(self):
         """Test anchored token match in strategies flow."""

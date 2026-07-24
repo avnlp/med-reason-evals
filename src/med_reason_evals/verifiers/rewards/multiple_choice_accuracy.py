@@ -73,12 +73,18 @@ def _token_kind_matches_answer_letter(
     return predicted.isalpha()
 
 
+# Apostrophe variants accepted in contractions: ASCII (') and Unicode right
+# single quotation mark (U+2019, '), which some tokenizers/renderers emit.
+_APOS = "['’]"
+# Contracted negation forms (e.g. "isn't", "isn't" with a curly apostrophe).
+_NEG_CONTRACTION = rf"(?:isn|wasn|aren|doesn){_APOS}t"
+
 # Anchored patterns like "final answer: C" or "the answer is D"
 ANCHOR_PATTERN = re.compile(
     r"(?:\bfinal\s+answer\b|\banswer\b|\bans\b|\bchoice\b|\boption\b|\bselected\b"
     r"|\bi\s+choose\b|\bi\s+pick\b|\btherefore\b|\bthus\b|\bso\b|\bconclusion\b"
     r"|\bin\s+conclusion\b|\bmost\s+likely\b|\bbest[-\s]+supported\s+answer\b|<answer>)\s*"
-    r"[:\-–—]?\s*(?:is\s*)?(?P<neg>not\s+|isn['']t\s+)?"
+    rf"[:\-–—]?\s*(?:is\s*)?(?P<neg>not\s+|{_NEG_CONTRACTION}\s+)?"
     r"(?:[*_`~]+\s*)*"  # allow markdown wrappers before the option
     r"\(?\s*(?P<opt>[A-Za-z]|\d{1,2})\s*\)?"  # option token, possibly parenthesized
     r"\s*[\)\.:]?\s*"  # optional delimiter (e.g., 'B.' or 'B)')
@@ -94,6 +100,10 @@ TOKEN_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Characters that may trail a bare-letter token fallback match (whitespace and
+# markdown/LaTeX/punctuation wrappers) without there being further real content.
+_TRAILING_WRAPPER_PATTERN = re.compile(r"^[\s*_`~)\]}$.:!?\"']*$")
+
 # Leading option token like "B. Answer text" or "C) ..." at the start of the response
 LEADING_OPTION_PATTERN = re.compile(
     r"^\s*(?:>\s*)?(?:(?:[-*+]\s+)|(?:\d{1,3}[.)]\s+))?\s*"  # blockquote / list prefixes
@@ -102,11 +112,13 @@ LEADING_OPTION_PATTERN = re.compile(
 )
 
 # Negation words that invalidate nearby matches
-NEGATION_PATTERN = re.compile(r"\b(?:not|isn['']t)\b", re.IGNORECASE)
+NEGATION_PATTERN = re.compile(rf"\b(?:not|{_NEG_CONTRACTION})\b", re.IGNORECASE)
 
 # Negative-context phrases that indicate an option mention is NOT a selected answer
 NEGATIVE_AFTER_OPTION_PATTERN = re.compile(
-    r"^\s*(?:is|are|was|were)\s+(?:incorrect|wrong|false|not\s+correct)\b|^\s*not\s+correct\b",
+    rf"^\s*(?:is|are|was|were)\s+(?:incorrect|wrong|false|not\s+correct)\b"
+    rf"|^\s*(?:isn|aren|wasn|weren){_APOS}t\s+correct\b"
+    rf"|^\s*not\s+correct\b",
     re.IGNORECASE,
 )
 
@@ -191,7 +203,7 @@ def _check_anchored_token(
         if prefix_norm:
             flexible_prefix = re.escape(prefix_norm).replace(r"\ ", r"\s+")
             prefix_pattern = re.compile(
-                rf"{flexible_prefix}\s*[:-–—]?\s*(?:is\s*)?(?P<neg>not\s+|isn['']t\s+)?"
+                rf"{flexible_prefix}\s*[:-–—]?\s*(?:is\s*)?(?P<neg>not\s+|{_NEG_CONTRACTION}\s+)?"
                 rf"\(?\s*(?P<opt>[A-Za-z]|\d{{1,2}})\s*[\)\.]?(?![\w+\-/])",
                 re.IGNORECASE,
             )
@@ -228,6 +240,13 @@ def _check_last_token(
         for token_match in reversed(tail_tokens):
             predicted = _norm_letter(token_match.group(1))
             if predicted is None:
+                continue
+            # Only treat this as an isolated final-answer token if nothing but
+            # whitespace/markdown/punctuation trails it. This keeps ordinary
+            # prose words that happen to be a single letter (e.g. the article
+            # "a" or pronoun "I") from being mistaken for option A or I when
+            # they're followed by more of the sentence.
+            if not _TRAILING_WRAPPER_PATTERN.match(tail[token_match.end() :]):
                 continue
             if _negated_near(tail, token_match):
                 continue
@@ -350,8 +369,16 @@ def multiple_choice_accuracy(
             )
         )
 
+    # Validate answer_letter before any early returns so invalid labels are
+    # always rejected consistently, regardless of whether llm_answer is empty.
+    norm_answer_letter = _norm_letter(answer_letter)
+    if norm_answer_letter is None:
+        raise ValueError(
+            f"Invalid answer_letter '{answer_letter}'. Must be a single letter or digit string."
+        )
+
     if not llm_answer:
-        return _result(False, "none", None, None)
+        return _result(False, "none", None, norm_answer_letter)
 
     # Normalize the response
     llm_answer = strip_think_tags(llm_answer)
@@ -366,12 +393,7 @@ def multiple_choice_accuracy(
     # Normalize: casefold only (preserve whitespace structure for sentence detection)
     llm_answer = nfkc_casefold(llm_answer)
 
-    norm_answer_letter = _norm_letter(answer_letter)
     answer_text_norm = nfkc_casefold(normalize_spaces(answer_text or ""))
-    if norm_answer_letter is None:
-        raise ValueError(
-            f"Invalid answer_letter '{answer_letter}'. Must be a single letter or digit string."
-        )
 
     explicit_choice_found = False
 

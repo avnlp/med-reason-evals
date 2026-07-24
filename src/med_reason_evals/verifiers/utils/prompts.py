@@ -44,8 +44,7 @@ THINK_XML_SYSTEM_PROMPT = (
 )
 
 XML_SYSTEM_PROMPT = (
-    "Please reason step by step, then give your final answer within "
-    "<answer>...</answer> XML tags."
+    "Please give your final answer within <answer>...</answer> XML tags."
 )
 
 # Boxed format prompts - LaTeX style common in math/reasoning benchmarks
@@ -55,6 +54,4 @@ THINK_BOXED_SYSTEM_PROMPT = (
     "Then, give your final answer inside \\boxed{}."
 )
 
-BOXED_SYSTEM_PROMPT = (
-    "Please reason step by step, and put your final answer within \\boxed{}."
-)
+BOXED_SYSTEM_PROMPT = "Please put your final answer within \\boxed{}."

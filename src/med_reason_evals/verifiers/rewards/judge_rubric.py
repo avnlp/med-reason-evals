@@ -24,6 +24,8 @@ from typing import Any
 
 from verifiers.types import Messages, State
 
+from med_reason_evals.utils.parsing import parse_json_response
+
 
 # Template for asking judge to evaluate a single rubric criterion
 # Note: Judge receives full conversation context plus specific item to assess
@@ -84,6 +86,11 @@ async def healthbench_rubric_reward(
 
     if not criteria or not points_list:
         return 0.0
+    if len(criteria) != len(points_list):
+        raise ValueError(
+            f"criteria and points_list must be the same length, got "
+            f"{len(criteria)} and {len(points_list)}"
+        )
 
     total_positive = sum(points for points in points_list if points > 0)
     if total_positive == 0:
@@ -104,12 +111,13 @@ async def healthbench_rubric_reward(
                 conversation=conversation,
                 rubric_item=rubric_item,
             )
-            await judge(
+            judge_response = await judge(
                 prompt=[{"role": "user", "content": full_prompt}],
                 completion="",
                 answer="",
                 state=state,
             )
+            dict_resp = parse_json_response(str(judge_response))
             if isinstance(dict_resp, dict):
                 _val = dict_resp.get("criteria_met", False)
                 if isinstance(_val, bool):

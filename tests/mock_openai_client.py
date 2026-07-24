@@ -147,11 +147,20 @@ def create_mock_error_client():
     """Create a mock client that simulates various error conditions."""
 
     def create_error(*args, **kwargs):
-        if "longer than the maximum" in str(kwargs):
+        # Determine the triggering text the caller supplied, mirroring the
+        # content-based pattern matching used by MockChatCompletions/MockCompletions
+        # above (last message content for chat, prompt text for completions).
+        messages = kwargs.get("messages")
+        if messages:
+            trigger_text = str(messages[-1].get("content", ""))
+        else:
+            trigger_text = str(kwargs.get("prompt", ""))
+
+        if "longer than the maximum" in trigger_text:
             raise Exception(
                 "This model's maximum context length is 4096 tokens. Your message was longer than the maximum."
             )
-        if "exceeds the model" in str(kwargs):
+        if "exceeds the model" in trigger_text:
             raise Exception("Input exceeds the model's context window.")
         raise Exception("Generic error")
 

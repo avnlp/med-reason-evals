@@ -15,9 +15,10 @@ This module defines standardized prompts and parsing helpers so answer format in
 3. Parse model output with the matching extractor.
 
 ```python
-from med_reason_evals.verifiers.utils import get_system_prompt
+from med_reason_evals.verifiers.utils import THINK_XML_SYSTEM_PROMPT, XML_SYSTEM_PROMPT
 
-system_prompt = get_system_prompt(answer_format="xml", use_think=True)
+use_think = True
+system_prompt = THINK_XML_SYSTEM_PROMPT if use_think else XML_SYSTEM_PROMPT
 ```
 
 ## Inputs and outputs

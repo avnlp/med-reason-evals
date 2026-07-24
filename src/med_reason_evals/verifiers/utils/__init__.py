@@ -17,6 +17,7 @@ and reward functions (for extracting answers during scoring).
 
 from med_reason_evals.verifiers.utils.parsers import (
     extract_boxed_answer,
+    extract_xml_answer,
     strip_think_tags,
 )
 from med_reason_evals.verifiers.utils.prompts import (
@@ -35,5 +36,6 @@ __all__ = [
     "THINK_XML_SYSTEM_PROMPT",
     "XML_SYSTEM_PROMPT",
     "extract_boxed_answer",
+    "extract_xml_answer",
     "strip_think_tags",
 ]

@@ -196,15 +196,21 @@ class BaseMCQEvaluator(BaseVerifierEvaluator):
 
         if answer_format == AnswerFormat.XML:
             # XML format: Use vf.XMLParser for structured field extraction
-            system_prompt = self.system_prompt or (
-                THINK_XML_SYSTEM_PROMPT if self.use_think else XML_SYSTEM_PROMPT
+            system_prompt = (
+                self.system_prompt
+                if self.system_prompt is not None
+                else (THINK_XML_SYSTEM_PROMPT if self.use_think else XML_SYSTEM_PROMPT)
             )
             parser_fields = ["think", "answer"] if self.use_think else ["answer"]
             parser = vf.XMLParser(fields=parser_fields, answer_field="answer")
         elif answer_format == AnswerFormat.BOXED:
             # BOXED format: Use vf.Parser with extract_boxed_answer function
-            system_prompt = self.system_prompt or (
-                THINK_BOXED_SYSTEM_PROMPT if self.use_think else BOXED_SYSTEM_PROMPT
+            system_prompt = (
+                self.system_prompt
+                if self.system_prompt is not None
+                else (
+                    THINK_BOXED_SYSTEM_PROMPT if self.use_think else BOXED_SYSTEM_PROMPT
+                )
             )
             # ThinkParser handles both think tags and answer extraction
             parser = (
@@ -245,9 +251,22 @@ class BaseJudgeEvaluator(BaseVerifierEvaluator):
 
     def _build_rubric(self, parser: vf.Parser) -> vf.Rubric:
         api_key = self.judge_api_key or os.getenv(self.judge_config.api_key_env)
+        if not api_key:
+            raise ValueError(
+                f"No judge API key found. Set the {self.judge_config.api_key_env} "
+                "environment variable or pass judge_api_key explicitly. Refusing to "
+                "fall back to the openai package's default key resolution, which "
+                "could leak an unrelated OPENAI_API_KEY to the judge's base_url."
+            )
         judge_client = make_async_openai_client(
             api_key=api_key,
             base_url=self.judge_config.base_url,
+        )
+        # Retry at the actual API-call boundary: JudgeRubric.judge() catches and
+        # converts all client errors into RuntimeError before returning, so wrapping
+        # judge() itself would never see a retryable exception type.
+        judge_client.chat.completions.create = wrap_openai_call(
+            judge_client.chat.completions.create
         )
         judge_rubric = JudgeRubric(
             judge_client=judge_client,
@@ -256,6 +275,5 @@ class BaseJudgeEvaluator(BaseVerifierEvaluator):
             judge_sampling_args=self.judge_config.sampling_args,
             parser=parser,
         )
-        judge_rubric.judge = wrap_openai_call(judge_rubric.judge)
         self._add_judge_reward_funcs(judge_rubric, parser)
         return judge_rubric

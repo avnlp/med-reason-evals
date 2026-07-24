@@ -7,8 +7,12 @@ environments.
 
 The module exposes three categories of components:
 
-1. Evaluators: Dataset-specific evaluation classes (e.g., MedQAEvaluator,
-   PubMedQAEvaluator) that build verifiers environments for medical QA tasks.
+1. Base Evaluators: Shared evaluator classes (BaseVerifierEvaluator,
+   BaseMCQEvaluator, BaseJudgeEvaluator) that build verifiers environments
+   for medical QA tasks, along with their configuration dataclasses
+   (GroqGenConfig, JudgeConfig). Dataset-specific evaluation is otherwise
+   invoked via each dataset module's `load_environment()` function (e.g.
+   `med_reason_evals.verifiers.medqa.load_environment`).
 
 2. Reward Functions: Scoring functions for evaluating model responses,
    including multiple-choice accuracy, LLM-as-judge, and hybrid approaches.
@@ -17,15 +21,19 @@ The module exposes three categories of components:
    XML tags) and managing answer formats.
 
 Example:
-    >>> from med_reason_evals.verifiers import MedQAEvaluator
-    >>> evaluator = MedQAEvaluator(use_think=True)
-    >>> env = evaluator.environment()
     >>> import asyncio
-    >>> results = asyncio.run(
-    ...     evaluator.evaluate(client, model="gpt-4", num_examples=100)
-    ... )
+    >>> from med_reason_evals.verifiers.medqa import load_environment
+    >>> env = load_environment(use_think=True)
+    >>> results = asyncio.run(env.evaluate(client, model="gpt-4", num_examples=100))
 """
 
+from med_reason_evals.verifiers.base import (
+    BaseJudgeEvaluator,
+    BaseMCQEvaluator,
+    BaseVerifierEvaluator,
+    GroqGenConfig,
+    JudgeConfig,
+)
 from med_reason_evals.verifiers.rewards import (
     MCQAccuracyResult,
     accuracy_reward,
@@ -43,6 +51,12 @@ from med_reason_evals.verifiers.utils import (
 
 
 __all__ = [
+    # Base evaluators
+    "BaseJudgeEvaluator",
+    "BaseMCQEvaluator",
+    "BaseVerifierEvaluator",
+    "GroqGenConfig",
+    "JudgeConfig",
     # Rewards
     "MCQAccuracyResult",
     "accuracy_reward",

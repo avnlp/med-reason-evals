@@ -17,18 +17,28 @@ This module provides a Verifiers-based evaluation path built on the Verifiers fr
 5. Aggregate scores and metrics.
 
 ```python
+import asyncio
 import os
 
 from openai import AsyncOpenAI
-from med_reason_evals.verifiers import MedQAEvaluator
+from med_reason_evals.verifiers.medqa import load_environment
 
 client = AsyncOpenAI(
     api_key=os.environ["GROQ_API_KEY"],
     base_url="https://api.groq.com/openai/v1",
 )
 
-evaluator = MedQAEvaluator(use_think=True, answer_format="xml")
-results = evaluator.evaluate(client=client, model="openai/gpt-oss-120b", num_examples=100)
+env = load_environment(use_think=True)
+
+
+async def main() -> None:
+    results = await env.evaluate(
+        client=client, model="openai/gpt-oss-120b", num_examples=100
+    )
+    print(results)
+
+
+asyncio.run(main())
 ```
 
 ## Inputs and outputs

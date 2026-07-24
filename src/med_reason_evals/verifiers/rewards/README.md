@@ -16,9 +16,21 @@ This module provides scoring logic for Verifiers-based evaluation, including acc
 3. Compute a score and return it to the evaluation harness.
 
 ```python
-from med_reason_evals.verifiers.rewards import multiple_choice_accuracy
+import asyncio
 
-score = await multiple_choice_accuracy(completion, answer, info)
+from med_reason_evals.verifiers.rewards import accuracy_reward
+
+
+async def main() -> None:
+    score = await accuracy_reward(
+        completion="The answer is B.",
+        answer="B",
+        info={"answer_text": "Ibuprofen"},
+    )
+    print(score)
+
+
+asyncio.run(main())
 ```
 
 ## Inputs and outputs

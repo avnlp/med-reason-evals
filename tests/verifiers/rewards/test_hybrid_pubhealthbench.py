@@ -59,41 +59,74 @@ class TestPubHealthBenchReward:
             mock_judge.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_default_to_mcq_when_info_missing(self):
-        """Should default to MCQ when info is None."""
+    async def test_default_to_freeform_when_info_missing(self):
+        """Should default to free-form judge scoring when info is None."""
         with patch(
-            "med_reason_evals.verifiers.rewards.hybrid_pubhealthbench.accuracy_reward",
+            "med_reason_evals.verifiers.rewards.hybrid_pubhealthbench.binary_judge_reward_from_template",
             new_callable=AsyncMock,
-            return_value=1.0,
-        ) as mock_accuracy:
+            return_value=0.5,
+        ) as mock_judge:
             result = await pubhealthbench_reward(
-                completion="A",
-                answer="A",
+                completion="Some text",
+                answer="Expected answer",
                 info=None,
                 state=MagicMock(),
                 parser=MagicMock(),
                 judge=MagicMock(),
             )
 
-            assert result == 1.0
-            mock_accuracy.assert_called_once()
+            assert result == 0.5
+            mock_judge.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_default_to_mcq_when_is_mcq_not_in_info(self):
-        """Should default to MCQ when is_mcq not present in info dict."""
+    async def test_default_to_freeform_when_is_mcq_not_in_info(self):
+        """Should default to free-form judge scoring when is_mcq is absent."""
         with patch(
-            "med_reason_evals.verifiers.rewards.hybrid_pubhealthbench.accuracy_reward",
+            "med_reason_evals.verifiers.rewards.hybrid_pubhealthbench.binary_judge_reward_from_template",
             new_callable=AsyncMock,
-            return_value=1.0,
-        ) as mock_accuracy:
+            return_value=0.5,
+        ) as mock_judge:
             result = await pubhealthbench_reward(
-                completion="A",
-                answer="A",
+                completion="Some text",
+                answer="Expected answer",
                 info={},
                 state=MagicMock(),
                 parser=MagicMock(),
                 judge=MagicMock(),
             )
 
-            assert result == 1.0
-            mock_accuracy.assert_called_once()
+            assert result == 0.5
+            mock_judge.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_default_to_freeform_when_is_mcq_none(self):
+        """Should default to free-form judge scoring when is_mcq is explicitly None."""
+        with patch(
+            "med_reason_evals.verifiers.rewards.hybrid_pubhealthbench.binary_judge_reward_from_template",
+            new_callable=AsyncMock,
+            return_value=0.5,
+        ) as mock_judge:
+            result = await pubhealthbench_reward(
+                completion="Some text",
+                answer="Expected answer",
+                info={"is_mcq": None},
+                state=MagicMock(),
+                parser=MagicMock(),
+                judge=MagicMock(),
+            )
+
+            assert result == 0.5
+            mock_judge.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_non_bool_is_mcq_raises_value_error(self):
+        """A non-bool, non-None is_mcq should fail fast rather than silently route."""
+        with pytest.raises(ValueError, match="is_mcq"):
+            await pubhealthbench_reward(
+                completion="A",
+                answer="A",
+                info={"is_mcq": "yes"},
+                state=MagicMock(),
+                parser=MagicMock(),
+                judge=MagicMock(),
+            )

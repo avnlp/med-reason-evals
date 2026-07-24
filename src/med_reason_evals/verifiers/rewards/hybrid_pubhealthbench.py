@@ -5,12 +5,16 @@ appropriate scoring strategy based on question type. PubHealthBench contains
 heterogeneous questions requiring different evaluation approaches.
 
 Dispatch logic:
-- is_mcq=True (default): Use accuracy_reward for standard letter/number matching
-- is_mcq=False: Use binary_judge_reward_from_template for open-ended evaluation
+- is_mcq=True: Use accuracy_reward for standard letter/number matching
+- is_mcq=False, None, or missing (default): Use
+  binary_judge_reward_from_template for open-ended evaluation
 
 This pattern allows a single reward function to handle mixed-format datasets
 without requiring separate evaluator configurations. The question type is
-passed through the info dictionary from dataset loading.
+passed through the info dictionary from dataset loading. Defaulting to
+free-form routing is deliberate: free-form ground truths routed into MCQ
+letter-extraction would raise or silently score incorrectly, whereas MCQ
+answers routed into judge scoring merely take the slower, still-correct path.
 """
 
 from __future__ import annotations
@@ -38,7 +42,10 @@ async def pubhealthbench_reward(
     """Score PubHealthBench answers using MCQ or judge rubric.
 
     Routes to appropriate reward function based on info["is_mcq"] flag.
-    Falls back to MCQ accuracy if info is missing or is_mcq not specified.
+    Falls back to free-form judge scoring if info is missing or is_mcq is not
+    specified, since that is the safer default: a free-form ground truth
+    mistakenly routed to MCQ letter-extraction can raise or score incorrectly,
+    while an MCQ answer routed to the judge is still scored correctly.
 
     Args:
         completion: Model's completion (Messages or string)
@@ -51,8 +58,17 @@ async def pubhealthbench_reward(
 
     Returns:
         Float score 0.0-1.0 from selected reward function
+
+    Raises:
+        ValueError: If info["is_mcq"] is present but not a bool.
     """
-    is_mcq = info.get("is_mcq", True) if info else True
+    is_mcq = info.get("is_mcq") if info else None
+    if is_mcq is not None and not isinstance(is_mcq, bool):
+        raise ValueError(
+            "info['is_mcq'] must be a bool or absent/None, got "
+            f"{type(is_mcq).__name__}: {is_mcq!r}"
+        )
+
     if is_mcq:
         return await accuracy_reward(
             completion=completion,

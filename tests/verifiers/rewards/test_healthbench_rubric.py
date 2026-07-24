@@ -331,13 +331,12 @@ class TestHealthBenchRubricReward:
         }
         state: dict[str, Any] = {}
 
-        call_count = 0
-
         async def mock_judge(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            # First and third pass, second fails
-            if call_count == 2:
+            # Criteria run concurrently via asyncio.gather, so which criterion is
+            # being judged must be read from the prompt content rather than
+            # inferred from call order (call order is not guaranteed).
+            prompt_content = kwargs["prompt"][0]["content"]
+            if "Criterion 2" in prompt_content:
                 return '{"criteria_met": false, "explanation": "Failed"}'
             return '{"criteria_met": true, "explanation": "Passed"}'
 
@@ -951,10 +950,9 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_mismatched_criteria_points_length(self):
-        """Mismatched criteria and points_list lengths should work with zip."""
+        """Mismatched criteria and points_list lengths should raise ValueError."""
         prompt = [{"role": "user", "content": "Question"}]
         completion = [{"role": "assistant", "content": "Answer"}]
-        # zip will stop at shorter list
         info: dict[str, Any] = {
             "criteria": ["Crit1", "Crit2", "Crit3"],
             "points_list": [1, 2],  # Shorter than criteria
@@ -964,16 +962,14 @@ class TestEdgeCases:
         async def mock_judge(**kwargs):
             return '{"criteria_met": true}'
 
-        result = await healthbench_rubric_reward(
-            prompt=prompt,
-            completion=completion,
-            info=info,
-            state=state,
-            judge=mock_judge,
-        )
-        # Only first 2 criteria evaluated
-        assert len(info["rubric_results"]) == 2
-        assert result == 1.0
+        with pytest.raises(ValueError, match="same length"):
+            await healthbench_rubric_reward(
+                prompt=prompt,
+                completion=completion,
+                info=info,
+                state=state,
+                judge=mock_judge,
+            )
 
     @pytest.mark.asyncio
     async def test_criteria_met_as_string_true(self):
