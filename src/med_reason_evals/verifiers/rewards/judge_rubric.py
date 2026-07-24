@@ -24,8 +24,6 @@ from typing import Any
 
 from verifiers.types import Messages, State
 
-from med_reason_evals.utils.parsing import parse_json_response
-
 
 # Template for asking judge to evaluate a single rubric criterion
 # Note: Judge receives full conversation context plus specific item to assess
@@ -106,7 +104,7 @@ async def healthbench_rubric_reward(
                 conversation=conversation,
                 rubric_item=rubric_item,
             )
-            raw_resp = await judge(
+            await judge(
                 prompt=[{"role": "user", "content": full_prompt}],
                 completion="",
                 answer="",
