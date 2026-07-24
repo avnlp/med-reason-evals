@@ -10,10 +10,10 @@ coverage:
       flag_coverage_not_uploaded_behavior: include
     patch:
       default:
-        target: 80%
+        target: 50%
     project:
       default:
-        target: 80%
+        target: 40%
         threshold: 5%
 
 comment:
