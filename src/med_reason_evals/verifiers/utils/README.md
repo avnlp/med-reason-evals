@@ -38,7 +38,7 @@ system_prompt = get_system_prompt(answer_format="xml", use_think=True)
 
 ## Supported datasets
 
-See [../../../README.md](../../../README.md) for the full dataset table and links.
+See [the project README](../../../../README.md) for project-level documentation.
 
 ## Directory map
 

@@ -93,6 +93,8 @@ async def healthbench_rubric_reward(
 
     conversation = format_conversation(prompt, completion_text)
     # Semaphore limits concurrent judge API calls to avoid rate limits
+    if max_parallel_judges < 1:
+        raise ValueError("max_parallel_judges must be at least 1")
     semaphore = asyncio.Semaphore(max_parallel_judges)
 
     async def _judge_single(idx: int, criterion: str, points: int) -> dict[str, Any]:
@@ -110,17 +112,25 @@ async def healthbench_rubric_reward(
                 answer="",
                 state=state,
             )
-            dict_resp = parse_json_response(str(raw_resp))
-            criteria_met = (
-                bool(dict_resp.get("criteria_met", False))
-                if isinstance(dict_resp, dict)
-                else False
-            )
+            if isinstance(dict_resp, dict):
+                _val = dict_resp.get("criteria_met", False)
+                if isinstance(_val, bool):
+                    criteria_met = _val
+                elif isinstance(_val, str):
+                    criteria_met = _val.lower() in ("true", "yes", "1")
+                else:
+                    criteria_met = bool(_val)
+            else:
+                criteria_met = False
             return {
                 "idx": idx,
                 "points_possible": points,
                 "criteria_met": criteria_met,
-                "judge_explanation": dict_resp.get("explanation"),
+                "judge_explanation": (
+                    dict_resp.get("explanation")
+                    if isinstance(dict_resp, dict)
+                    else None
+                ),
             }
 
     # Launch all criteria evaluations concurrently (up to max_parallel_judges at once)

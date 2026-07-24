@@ -121,7 +121,7 @@ async def binary_judge_reward_from_template(
         prediction = parser.parse_answer(completion)
 
     # If missing prediction, record and return 0.0
-    if prediction is None:
+    if prediction is None or not str(prediction).strip():
         info.setdefault("judge_feedback", []).append(
             {
                 "prediction": None,

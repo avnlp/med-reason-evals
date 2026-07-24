@@ -182,9 +182,9 @@ class BaseMCQEvaluator(BaseVerifierEvaluator):
         self.use_think = use_think
         self.system_prompt = system_prompt
         self.answer_format = answer_format
-        self.streaming = (
-            env_dataset_streaming_default() if streaming is None else streaming
-        )
+        if streaming:
+            raise ValueError("Verifiers environments do not support streaming datasets")
+        self.streaming = False
 
     def _build_parser_and_prompt(self) -> tuple[vf.Parser, str | None]:
         # Normalize answer_format to enum for type safety

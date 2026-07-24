@@ -203,12 +203,12 @@ def _check_anchored_token(
     if anchored_matches and norm_answer_letter:
         last_match = anchored_matches[-1]
         predicted = _norm_letter(last_match.group("opt"))
-        if last_match.group("neg") is None and _token_kind_matches_answer_letter(
-            predicted, norm_answer_letter
+        if (
+            last_match.group("neg") is None
+            and not _negative_after_option(llm_answer, last_match)
+            and _token_kind_matches_answer_letter(predicted, norm_answer_letter)
         ):
             return predicted, True
-        if predicted == norm_answer_letter and last_match.group("neg") is None:
-            return predicted, False
     return None, False
 
 

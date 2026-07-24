@@ -29,7 +29,7 @@ from med_reason_evals.verifiers.rewards.multiple_choice_accuracy import (
 async def pubhealthbench_reward(
     completion: Any,
     answer: str,
-    info: dict[str, Any],
+    info: dict[str, Any] | None,
     state,
     parser,
     judge,

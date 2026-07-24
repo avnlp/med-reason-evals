@@ -17,6 +17,8 @@ This module provides a Verifiers-based evaluation path built on the Verifiers fr
 5. Aggregate scores and metrics.
 
 ```python
+import os
+
 from openai import AsyncOpenAI
 from med_reason_evals.verifiers import MedQAEvaluator
 
@@ -49,7 +51,7 @@ results = evaluator.evaluate(client=client, model="openai/gpt-oss-120b", num_exa
 
 ## Supported datasets
 
-See [../../README.md](../../README.md) for the full dataset table and links.
+See [../../../README.md](../../../README.md) for the full dataset table and links.
 
 ## Directory map
 

@@ -41,7 +41,7 @@ score = await multiple_choice_accuracy(completion, answer, info)
 
 ## Supported datasets
 
-See [../../../README.md](../../../README.md) for the full dataset table and links.
+See [../../data/README.md](../../data/README.md) for the available dataset adapters.
 
 ## Directory map
 
