@@ -972,6 +972,46 @@ class TestEdgeCases:
             )
 
     @pytest.mark.asyncio
+    async def test_concurrent_judge_calls_do_not_lose_cache_entries(self):
+        """All criteria's judge responses must survive concurrent judge() calls.
+
+        Mimics JudgeRubric.judge()'s real caching pattern: read
+        state["judge_response"], await the "API call", then write back with
+        `cached[key] = value; state["judge_response"] = cached`. If the dict
+        doesn't already exist before the concurrent calls start, each call's
+        read races the others', and every writer but the last clobbers
+        state["judge_response"] with a dict containing only its own entry.
+        """
+        prompt = [{"role": "user", "content": "Question"}]
+        completion = [{"role": "assistant", "content": "Answer"}]
+        info: dict[str, Any] = {
+            "criteria": ["Criterion 1", "Criterion 2", "Criterion 3"],
+            "points_list": [1, 1, 1],
+        }
+        state: dict[str, Any] = {}
+
+        async def mock_judge(**kwargs):
+            judge_prompt = kwargs["prompt"][0]["content"]
+            cached = state.get("judge_response")
+            await asyncio.sleep(0)  # yield, so calls interleave
+            response = '{"criteria_met": true}'
+            if not isinstance(cached, dict):
+                cached = {}
+            cached[judge_prompt] = response
+            state["judge_response"] = cached
+            return response
+
+        await healthbench_rubric_reward(
+            prompt=prompt,
+            completion=completion,
+            info=info,
+            state=state,
+            judge=mock_judge,
+        )
+
+        assert len(state["judge_response"]) == 3
+
+    @pytest.mark.asyncio
     async def test_criteria_met_as_string_true(self):
         """String 'true' for criteria_met should be handled as True."""
         prompt = [{"role": "user", "content": "Question"}]

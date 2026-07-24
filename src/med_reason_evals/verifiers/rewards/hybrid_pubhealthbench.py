@@ -62,7 +62,8 @@ async def pubhealthbench_reward(
     Raises:
         ValueError: If info["is_mcq"] is present but not a bool.
     """
-    is_mcq = info.get("is_mcq") if info else None
+    info = info or {}
+    is_mcq = info.get("is_mcq")
     if is_mcq is not None and not isinstance(is_mcq, bool):
         raise ValueError(
             "info['is_mcq'] must be a bool or absent/None, got "

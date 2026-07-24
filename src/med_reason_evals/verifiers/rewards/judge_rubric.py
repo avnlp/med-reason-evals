@@ -102,6 +102,16 @@ async def healthbench_rubric_reward(
         raise ValueError("max_parallel_judges must be at least 1")
     semaphore = asyncio.Semaphore(max_parallel_judges)
 
+    # Pre-create state["judge_response"] before any concurrent judge() calls.
+    # JudgeRubric.judge() does a non-atomic read-modify-write of this dict
+    # (read cache, await the API call, then write back); if it doesn't exist
+    # yet, concurrent first calls each create their own dict and the later
+    # write clobbers earlier ones. Creating it up front means every call
+    # shares the same dict object, so concurrent writes just mutate it in
+    # place instead of racing to replace it.
+    if isinstance(state, dict):
+        state.setdefault("judge_response", {})
+
     async def _judge_single(idx: int, criterion: str, points: int) -> dict[str, Any]:
         # Acquire semaphore to limit concurrency
         async with semaphore:

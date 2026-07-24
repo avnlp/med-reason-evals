@@ -62,8 +62,14 @@ class JudgeConfig:
 
 
 def make_async_openai_client(*, api_key: str | None, base_url: str) -> AsyncOpenAI:
-    """Create an AsyncOpenAI client with the given base URL."""
-    return AsyncOpenAI(api_key=api_key, base_url=base_url)
+    """Create an AsyncOpenAI client with the given base URL.
+
+    Disables the SDK's own retries (default: 2): this client is wrapped with
+    `wrap_openai_call`'s retry policy at the call boundary, so the client's
+    own retries would multiply the effective request count per failure
+    instead of being controlled by that single retry budget.
+    """
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, max_retries=0)
 
 
 def env_dataset_streaming_default() -> bool:

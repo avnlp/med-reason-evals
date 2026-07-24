@@ -100,9 +100,10 @@ TOKEN_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Characters that may trail a bare-letter token fallback match (whitespace and
-# markdown/LaTeX/punctuation wrappers) without there being further real content.
-_TRAILING_WRAPPER_PATTERN = re.compile(r"^[\s*_`~)\]}$.:!?\"']*$")
+# Characters that may trail a bare-letter token fallback match (whitespace,
+# markdown/LaTeX/punctuation wrappers, sentence punctuation, and typographic
+# quotes) without there being further real content.
+_TRAILING_WRAPPER_PATTERN = re.compile(r'^[\s*_`~)\]}$.,;:!?"\'‘’“”]*$')
 
 # Leading option token like "B. Answer text" or "C) ..." at the start of the response
 LEADING_OPTION_PATTERN = re.compile(
@@ -158,6 +159,33 @@ def _negated_near(text: str, match: re.Match[str]) -> bool:
     )
     prefix = text[sentence_start:match_start]
     return bool(NEGATION_PATTERN.search(prefix))
+
+
+# Marks a new clause within a sentence: negation about an earlier clause (e.g.
+# "B doesn't apply") shouldn't poison a later, unrelated option in the same
+# sentence (e.g. "..., so C").
+_CLAUSE_BOUNDARY_PATTERN = re.compile(
+    r",\s*|;\s*|\b(?:so|therefore|thus|but|however|hence)\b\s*",
+    re.IGNORECASE,
+)
+
+
+def _negated_in_clause(text: str, match: re.Match[str]) -> bool:
+    """Check for negation local to the match's clause, not the whole sentence.
+
+    Like `_negated_near`, but scoped to text after the last clause boundary
+    (comma, semicolon, or a conjunction like "so"/"therefore") before the
+    match, so a negated mention of a different, earlier option doesn't
+    suppress a later, correctly-stated bare answer in the same sentence.
+    """
+    sentence_start, _sentence_end, match_start, _match_end = (
+        _get_sentence_containing_match(text, match)
+    )
+    prefix = text[sentence_start:match_start]
+    clause_boundaries = list(_CLAUSE_BOUNDARY_PATTERN.finditer(prefix))
+    clause_start = clause_boundaries[-1].end() if clause_boundaries else 0
+    local_prefix = prefix[clause_start:]
+    return bool(NEGATION_PATTERN.search(local_prefix))
 
 
 def _negative_after_option(text: str, match: re.Match[str]) -> bool:
@@ -248,7 +276,7 @@ def _check_last_token(
             # they're followed by more of the sentence.
             if not _TRAILING_WRAPPER_PATTERN.match(tail[token_match.end() :]):
                 continue
-            if _negated_near(tail, token_match):
+            if _negated_in_clause(tail, token_match):
                 continue
             if _negative_after_option(tail, token_match):
                 continue
@@ -423,7 +451,7 @@ def multiple_choice_accuracy(
         if result:
             return _result(True, "answer_text", result[1], answer_text_norm)
 
-    return _result(False, "none", None, None)
+    return _result(False, "none", None, norm_answer_letter)
 
 
 async def accuracy_reward(

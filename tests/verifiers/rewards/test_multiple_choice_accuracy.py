@@ -450,6 +450,30 @@ class TestCheckLastToken:
         result = _check_last_token(text, "B")
         assert result == "B"
 
+    def test_last_token_contraction_negation_scoped_to_own_clause(self):
+        """A contraction negating an earlier option must not suppress a later one."""
+        text = "B doesn't apply, so C"
+        result = _check_last_token(text, "C")
+        assert result == "C"
+
+    def test_last_token_contraction_negation_scoped_with_conjunction(self):
+        """Negation before a "therefore" clause boundary must not carry across it."""
+        text = "A wasn't right, therefore C"
+        result = _check_last_token(text, "C")
+        assert result == "C"
+
+    def test_last_token_contraction_negation_comma_only_boundary(self):
+        """A comma alone (no conjunction) still scopes negation to its own clause."""
+        text = "B isn't correct, C"
+        result = _check_last_token(text, "C")
+        assert result == "C"
+
+    def test_last_token_contraction_negation_still_rejects_same_clause(self):
+        """A contraction negating the candidate itself must still reject it."""
+        text = "The answer isn't C"
+        result = _check_last_token(text, "C")
+        assert result is None
+
 
 class TestCheckAnswerText:
     """Tests for _check_answer_text function."""

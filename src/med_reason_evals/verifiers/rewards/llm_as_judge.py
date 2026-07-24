@@ -28,6 +28,7 @@ Template constants:
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
@@ -37,6 +38,22 @@ from med_reason_evals.utils.parsing import parse_yes_no
 if TYPE_CHECKING:
     from verifiers.parsers.parser import Parser
     from verifiers.types import Info, Messages, State
+
+
+_QUOTE_RUN_RE = re.compile(r'"{2,}')
+_ZERO_WIDTH_SPACE = "\u200b"
+
+
+def _escape_triple_quote_delimiter(text: str) -> str:
+    r"""Break up runs of `"` so untrusted text can't fake-close the delimiter.
+
+    Predictions are wrapped in \"\"\"...\"\"\" to mark them as untrusted data.
+    Without this, a completion containing its own \"\"\" could prematurely
+    close that wrapper and put injected instructions back into instruction
+    context. Interleaving zero-width spaces keeps the text visually identical
+    while preventing any 3-in-a-row quote match.
+    """
+    return _QUOTE_RUN_RE.sub(lambda m: _ZERO_WIDTH_SPACE.join(m.group()), text)
 
 
 MEDCASEREASONING_JUDGE_TEMPLATE = """\
@@ -118,7 +135,12 @@ async def binary_judge_reward_from_template(
 
     prediction = str(prediction)
 
-    prompt_str = template.format(prediction=prediction, ground_truth=answer)
+    # Escape only the copy going into the prompt, so the judge can't be
+    # tricked into leaving the untrusted-data block; info["judge_feedback"]
+    # below keeps the raw prediction for debugging fidelity.
+    prompt_str = template.format(
+        prediction=_escape_triple_quote_delimiter(prediction), ground_truth=answer
+    )
 
     # JudgeRubric.judge signature: judge(prompt, completion, answer, state)
     # Pass the original completion (not the extracted `prediction` string) so
@@ -191,10 +213,12 @@ def make_binary_judge_reward(
         )
 
     # Set a descriptive, collision-resistant name for debugging: Rubric keys
-    # per-function metrics by __name__, so templates sharing a prefix (e.g. the
-    # first 20 chars) would otherwise clobber each other's metrics.
+    # per-function metrics by __name__, so templates sharing only a prefix
+    # would otherwise clobber each other's metrics. The sanitized prefix keeps
+    # the name readable; the hash suffix guarantees uniqueness.
+    prefix = re.sub(r"[^a-zA-Z0-9]+", "_", template[:30]).strip("_").lower()
     template_hash = hashlib.sha256(template.encode()).hexdigest()[:8]
-    reward_func.__name__ = f"binary_judge_reward_{template_hash}"
+    reward_func.__name__ = f"binary_judge_reward_{prefix}_{template_hash}"
     reward_func.__doc__ = f"Binary judge reward with template: {template[:50]}..."
 
     return reward_func

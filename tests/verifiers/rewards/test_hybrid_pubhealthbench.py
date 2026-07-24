@@ -79,6 +79,32 @@ class TestPubHealthBenchReward:
             mock_judge.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_info_none_does_not_crash_real_judge_delegate(self):
+        """info=None must not crash binary_judge_reward_from_template's info.setdefault.
+
+        Unlike the tests above, this does not mock out
+        binary_judge_reward_from_template, so it actually exercises the
+        info.setdefault("judge_feedback", ...) call that a bare None would
+        raise AttributeError on.
+        """
+        parser = MagicMock()
+        parser.parse_answer.return_value = "Some predicted answer"
+
+        async def mock_judge(**kwargs):
+            return "yes"
+
+        result = await pubhealthbench_reward(
+            completion="Some predicted answer",
+            answer="Expected answer",
+            info=None,
+            state={},
+            parser=parser,
+            judge=mock_judge,
+        )
+
+        assert result == 1.0
+
+    @pytest.mark.asyncio
     async def test_default_to_freeform_when_is_mcq_not_in_info(self):
         """Should default to free-form judge scoring when is_mcq is absent."""
         with patch(
