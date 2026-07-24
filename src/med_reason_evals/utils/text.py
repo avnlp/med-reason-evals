@@ -74,7 +74,10 @@ def normalize_answer(text: str | None, mode: str = "basic") -> str:
         return normalized
 
     if mode == "semantic":
-        normalized = normalized.replace("-", " ")
+        normalized = "".join(
+            " " if unicodedata.category(char) == "Pd" else char
+            for char in normalized
+        )
         # Remove punctuation characters.
         normalized = "".join(
             char

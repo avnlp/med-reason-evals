@@ -134,6 +134,8 @@ class GroqRollouts:
         """
         import asyncio
 
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency must be greater than 0")
         semaphore = asyncio.Semaphore(max_concurrency)
 
         async def _bounded_generate(messages: list[dict[str, str]]) -> str:
