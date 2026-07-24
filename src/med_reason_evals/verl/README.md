@@ -20,7 +20,7 @@ import asyncio
 from med_reason_evals.verl import GroqRollouts
 
 rollouts = GroqRollouts()
-completion = await rollouts.generate(messages=[{"role": "user", "content": "..."}])
+completion = asyncio.run(rollouts.generate(messages=[{"role": "user", "content": "..."}]))
 ```
 
 ## Inputs and outputs

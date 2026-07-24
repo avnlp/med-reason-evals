@@ -6,6 +6,7 @@ whether model responses are correct or equivalent to ground truth.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Awaitable, Callable
 
 from openai import AsyncOpenAI
@@ -13,6 +14,22 @@ from openai import AsyncOpenAI
 from med_reason_evals.utils.extraction import extract_answer
 from med_reason_evals.utils.parsing import parse_yes_no
 from med_reason_evals.utils.retry import call_with_retry
+
+
+_QUOTE_RUN_RE = re.compile(r'"{3,}')
+_ZERO_WIDTH_SPACE = "\u200b"
+
+
+def _escape_triple_quote_delimiter(text: str) -> str:
+    """Break up runs of \" so untrusted text can't fake-close the delimiter.
+
+    Predictions are wrapped in \"\"\"...\"\"\" to mark them as untrusted data.
+    Without this, a completion containing its own \"\"\" could prematurely
+    close that wrapper and put injected instructions back into instruction
+    context. Interleaving zero-width spaces keeps the text visually identical
+    while preventing any 3-in-a-row quote match.
+    """
+    return _QUOTE_RUN_RE.sub(lambda m: _ZERO_WIDTH_SPACE.join(m.group()), text)
 
 
 DEFAULT_JUDGE_PROMPT = """\
@@ -50,7 +67,7 @@ async def judge_answer(
         True if the judge says the answer is correct.
     """
     prompt = (judge_prompt or DEFAULT_JUDGE_PROMPT).format(
-        prediction=prediction,
+        prediction=_escape_triple_quote_delimiter(prediction),
         ground_truth=ground_truth,
     )
 

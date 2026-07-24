@@ -58,7 +58,6 @@ class JudgeConfig:
     max_tokens: int = 500
     temperature: float = 0.0
     sampling_args: dict[str, Any] = field(default_factory=dict)
-    max_concurrency: int = 10
 
 
 class BaseVerlEvaluator(ABC):
