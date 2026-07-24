@@ -10,11 +10,12 @@ from typing import Any, Awaitable, Callable, TypeVar
 import httpx
 from openai import (
     APIConnectionError,
+    APIStatusError,
     APITimeoutError,
     InternalServerError,
     RateLimitError,
 )
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
+from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_random_exponential
 
 
@@ -84,6 +85,9 @@ def _retryable_exception_types() -> tuple[type[BaseException], ...]:
     )
 
 
+_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({408, 409, 429, 500, 502, 503, 504})
+
+
 def _log_retry(retry_state: Any) -> None:
     if not _retry_logging_enabled():
         return
@@ -98,13 +102,34 @@ def _log_retry(retry_state: Any) -> None:
     )
 
 
+def _is_retryable(exception: BaseException) -> bool:
+    """Return True if the exception should trigger a retry.
+
+    Covers both the standard OpenAI SDK exception hierarchy and additional
+    HTTP status codes (e.g. 409 Conflict, 408 Request Timeout) that the SDK
+    would normally retry internally when max_retries > 0. Also respects
+    provider-level retry signals via the ``x-should-retry`` response header.
+    """
+    if isinstance(
+        exception,
+        _retryable_exception_types(),
+    ):
+        return True
+    if isinstance(exception, APIStatusError):
+        return exception.status_code in _RETRYABLE_STATUS_CODES or (
+            hasattr(exception, "response")
+            and exception.response.headers.get("x-should-retry", "").lower() == "true"
+        )
+    return False
+
+
 def retry_openai() -> AsyncRetrying:
     """Return a configured AsyncRetrying instance for OpenAI-compatible calls."""
     max_attempts, max_wait = _retry_settings()
     return AsyncRetrying(
         stop=stop_after_attempt(max_attempts),
         wait=wait_random_exponential(multiplier=1, min=1, max=max_wait),
-        retry=retry_if_exception_type(_retryable_exception_types()),
+        retry=retry_if_exception(_is_retryable),
         before_sleep=_log_retry,
         reraise=True,
     )

@@ -547,11 +547,11 @@ class TestMakeBinaryJudgeReward:
         assert "template" in reward_func.__doc__.lower()
 
     def test_name_is_sha256_hash_based(self):
-        """__name__ should end with an 8-char sha256 hash of the template."""
+        """__name__ should end with a 12-char sha256 hash of the template."""
         reward_func = make_binary_judge_reward(MEDCASEREASONING_JUDGE_TEMPLATE)
         expected_hash = hashlib.sha256(
             MEDCASEREASONING_JUDGE_TEMPLATE.encode()
-        ).hexdigest()[:8]
+        ).hexdigest()[:12]
         assert reward_func.__name__.endswith(f"_{expected_hash}")
         assert reward_func.__name__.startswith("binary_judge_reward_")
 

@@ -109,8 +109,13 @@ async def healthbench_rubric_reward(
     # write clobbers earlier ones. Creating it up front means every call
     # shares the same dict object, so concurrent writes just mutate it in
     # place instead of racing to replace it.
-    if isinstance(state, dict):
-        state.setdefault("judge_response", {})
+    #
+    # Also handle the case where state["judge_response"] already exists but
+    # is not a dict (e.g. a string from a partial cache-recovery path in the
+    # dependency). setdefault would preserve that invalid value; instead we
+    # always re-initialize when the current value is not a dict.
+    if isinstance(state, dict) and not isinstance(state.get("judge_response"), dict):
+        state["judge_response"] = {}
 
     async def _judge_single(idx: int, criterion: str, points: int) -> dict[str, Any]:
         # Acquire semaphore to limit concurrency
