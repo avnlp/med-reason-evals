@@ -158,10 +158,9 @@ class TestMedQABuildResult:
         """Test _build_result method."""
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = MedQAEvaluator(split="test")
-            scores = [1.0, 0.0, 1.0, 1.0]
             avg_score = 0.75
 
-            result = evaluator._build_result(scores, avg_score)
+            result = evaluator._build_result(avg_score, num_examples=4)
 
             assert_verl_result_shape(
                 result,
@@ -178,14 +177,13 @@ class TestMedQABuildResult:
             assert result["num_examples"] == 4
             assert result["accuracy"] == 0.75
 
-    def test_build_result_empty_scores(self):
-        """Test _build_result with empty scores."""
+    def test_build_result_zero_examples(self):
+        """Test _build_result with zero examples."""
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
             evaluator = MedQAEvaluator()
-            scores = []
             avg_score = 0.0
 
-            result = evaluator._build_result(scores, avg_score)
+            result = evaluator._build_result(avg_score, num_examples=0)
 
             assert result["num_examples"] == 0
             assert result["avg_score"] == 0.0

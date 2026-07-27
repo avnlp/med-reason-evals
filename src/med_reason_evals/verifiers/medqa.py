@@ -62,7 +62,7 @@ class MedQAEvaluator(BaseMCQEvaluator):
         )
 
 
-async def main() -> None:
+async def main() -> None:  # pragma: no cover
     """Run MedQA evaluation with Groq API."""
     config = GroqGenConfig()
     client = AsyncOpenAI(
@@ -80,5 +80,5 @@ async def main() -> None:
     print(f"MedQA Results: {results}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     asyncio.run(main())

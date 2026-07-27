@@ -21,18 +21,18 @@ import asyncio
 import os
 
 from openai import AsyncOpenAI
-from med_reason_evals.verifiers.medqa import load_environment
+from med_reason_evals.verifiers.medqa import MedQAEvaluator
 
 client = AsyncOpenAI(
     api_key=os.environ["GROQ_API_KEY"],
     base_url="https://api.groq.com/openai/v1",
 )
 
-env = load_environment(use_think=True)
+evaluator = MedQAEvaluator(use_think=True)
 
 
 async def main() -> None:
-    results = await env.evaluate(
+    results = await evaluator.evaluate(
         client=client, model="openai/gpt-oss-120b", num_examples=100
     )
     print(results)

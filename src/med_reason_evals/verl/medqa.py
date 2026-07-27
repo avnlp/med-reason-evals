@@ -61,14 +61,14 @@ class MedQAEvaluator(BaseMCQEvaluator):
 
     def _build_result(
         self,
-        scores: list[float],
         avg_score: float,
+        num_examples: int = 0,
     ) -> dict[str, Any]:
         """Build the evaluation result dictionary.
 
         Args:
-            scores: List of individual scores.
-            avg_score: Average score.
+            avg_score: Average score across all evaluated examples.
+            num_examples: Number of successfully evaluated examples.
 
         Returns:
             Dictionary with dataset, split, num_examples, avg_score, and accuracy.
@@ -76,7 +76,7 @@ class MedQAEvaluator(BaseMCQEvaluator):
         return {
             "dataset": self.DATASET_NAME,
             "split": self.split,
-            "num_examples": len(scores),
+            "num_examples": num_examples,
             "avg_score": avg_score,
             "accuracy": avg_score,
         }
