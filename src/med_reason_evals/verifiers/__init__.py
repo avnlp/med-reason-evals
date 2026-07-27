@@ -10,9 +10,9 @@ The module exposes three categories of components:
 1. Base Evaluators: Shared evaluator classes (BaseVerifierEvaluator,
    BaseMCQEvaluator, BaseJudgeEvaluator) that build verifiers environments
    for medical QA tasks, along with their configuration dataclasses
-   (GroqGenConfig, JudgeConfig). Dataset-specific evaluation is otherwise
-   invoked via each dataset module's `load_environment()` function (e.g.
-   `med_reason_evals.verifiers.medqa.load_environment`).
+   (GroqGenConfig, JudgeConfig). Dataset-specific evaluators are invoked via
+   each dataset module's evaluator class (e.g.
+   `med_reason_evals.verifiers.medqa.MedQAEvaluator`).
 
 2. Reward Functions: Scoring functions for evaluating model responses,
    including multiple-choice accuracy, LLM-as-judge, and hybrid approaches.
@@ -22,9 +22,19 @@ The module exposes three categories of components:
 
 Example:
     >>> import asyncio
-    >>> from med_reason_evals.verifiers.medqa import load_environment
-    >>> env = load_environment(use_think=True)
-    >>> results = asyncio.run(env.evaluate(client, model="gpt-4", num_examples=100))
+    >>> import os
+    >>> from openai import AsyncOpenAI
+    >>> from med_reason_evals.verifiers.medqa import MedQAEvaluator
+    >>> client = AsyncOpenAI(
+    ...     api_key=os.environ["GROQ_API_KEY"],
+    ...     base_url="https://api.groq.com/openai/v1",
+    ... )
+    >>> evaluator = MedQAEvaluator(use_think=True)
+    >>> results = asyncio.run(
+    ...     evaluator.evaluate(
+    ...         client=client, model="openai/gpt-oss-120b", num_examples=100
+    ...     )
+    ... )
 """
 
 from med_reason_evals.verifiers.base import (
@@ -34,6 +44,7 @@ from med_reason_evals.verifiers.base import (
     GroqGenConfig,
     JudgeConfig,
 )
+from med_reason_evals.verifiers.medqa import MedQAEvaluator
 from med_reason_evals.verifiers.rewards import (
     MCQAccuracyResult,
     accuracy_reward,
@@ -57,6 +68,8 @@ __all__ = [
     "BaseVerifierEvaluator",
     "GroqGenConfig",
     "JudgeConfig",
+    # Dataset evaluators
+    "MedQAEvaluator",
     # Rewards
     "MCQAccuracyResult",
     "accuracy_reward",

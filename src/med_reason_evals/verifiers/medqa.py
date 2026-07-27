@@ -1,98 +1,84 @@
-"""MedQA Evaluation.
+"""MedQA verifiers evaluator.
 
-Dataset: HuggingFace `GBaker/MedQA-USMLE-4-options` dataset.
+Evaluator for MedQA-USMLE-4-options, a multiple-choice question dataset
+based on the United States Medical Licensing Examination (USMLE).
 
-- Parser: Extracts \\boxed{A|B|C|D} from completions
-- Reward Functions:
-    - Correct answer reward
-    - Format reward
+This dataset tests medical knowledge at the level required for medical
+licensure in the United States, covering:
+- Basic science knowledge
+- Clinical reasoning
+- Patient management
+- Diagnostic interpretation
+
+The 4-option format aligns with standard medical board exams, making
+this a practical benchmark for medical AI capabilities.
+
+Reference: https://github.com/jind11/MedQA
 """
 
+import asyncio
 import os
 
-import verifiers as vf
-from dotenv import load_dotenv
-from openai import OpenAI
-from verifiers.utils.data_utils import extract_boxed_answer
+from datasets import Dataset
+from openai import AsyncOpenAI
 
 from med_reason_evals.data.medqa import MedQADataset
-from med_reason_evals.verifiers.answer_correctness_reward import (
-    correct_answer_reward_func,
-)
+from med_reason_evals.verifiers.base import BaseMCQEvaluator, GroqGenConfig
+from med_reason_evals.verifiers.utils.prompts import AnswerFormat
 
 
-def load_environment(
-    use_think: bool = True,
-    num_train_examples: int = -1,
-    num_test_examples: int = -1,
-) -> vf.SingleTurnEnv:
-    """MedQA-USMLE-4-options multiple-choice evaluation.
+class MedQAEvaluator(BaseMCQEvaluator):
+    """Evaluator for MedQA-USMLE-4-options."""
 
-    Args:
-        use_think: Whether to require step-by-step reasoning (default: True)
-        num_train_examples: Number of training examples to use (-1 for all)
-        num_test_examples: Number of test examples to use (-1 for all)
+    def __init__(
+        self,
+        use_think: bool = False,
+        system_prompt: str | None = None,
+        answer_format: AnswerFormat | str = AnswerFormat.XML,
+        streaming: bool | None = None,
+    ) -> None:
+        """Initialize the MedQA evaluator.
 
-    Returns:
-        vf.SingleTurnEnv configured with MedQA dataset
-    """
-    dataset = MedQADataset(
-        num_train_examples=num_train_examples,
-        num_test_examples=num_test_examples,
+        Args:
+            use_think: Whether to include thinking tags in the output.
+            system_prompt: Custom system prompt to use. If None, uses default.
+            answer_format: Format for answers (XML or BOXED).
+            streaming: Whether to use streaming mode for dataset loading.
+                Defaults to False if not specified.
+        """
+        super().__init__(
+            use_think=use_think,
+            system_prompt=system_prompt,
+            answer_format=answer_format,
+            streaming=streaming,
+        )
+
+    def _load_datasets(self) -> tuple[Dataset | None, Dataset]:
+        train_dataset = MedQADataset(split="train", streaming=self.streaming)
+        test_dataset = MedQADataset(split="test", streaming=self.streaming)
+        return (
+            train_dataset.get_verifiers_dataset(),
+            test_dataset.get_verifiers_dataset(),
+        )
+
+
+async def main() -> None:  # pragma: no cover
+    """Run MedQA evaluation with Groq API."""
+    config = GroqGenConfig()
+    client = AsyncOpenAI(
+        api_key=os.getenv(config.api_key_env),
+        base_url=config.base_url,
     )
 
-    options = "(A, B, C, or D)"  # MedQA has 4 options
-
-    system_prompt = (
-        f"Think step-by-step inside <think> tags, then give only the letter "
-        f"of the correct answer inside \\boxed{{...}} {options}. Do not include option "
-        f"text in the box; only the letter."
-    )
-
-    parser = vf.ThinkParser(extract_fn=extract_boxed_answer)
-
-    rubric = vf.Rubric(
-        funcs=[correct_answer_reward_func, parser.get_format_reward_func()],
-        weights=[1.0, 0.0],
-        parser=parser,
-    )
-
-    return vf.SingleTurnEnv(
-        dataset=dataset.train_ds,
-        eval_dataset=dataset.test_ds,
-        system_prompt=system_prompt,
-        parser=parser,
-        rubric=rubric,
-    )
-
-
-def main() -> None:
-    """Run the evaluation on the MedQA dataset."""
-    # Load environment variables
-    load_dotenv()
-
-    # Load environment
-    env = load_environment(
-        use_think=True,
-        num_train_examples=-1,
-        num_test_examples=-1,
-    )
-
-    # Initialize OpenAI-compatible client (e.g., Groq)
-    client = OpenAI(
-        api_key=os.getenv("GROQ_API_KEY"),
-        base_url="https://api.groq.com/openai/v1",  # Fixed URL (removed extra spaces)
-    )
-
-    # Run evaluation
-    results = env.evaluate(
+    evaluator = MedQAEvaluator()
+    results = await evaluator.evaluate(
         client=client,
-        model="llama-3.3-70b-versatile",
-        num_examples=2,
-        rollouts_per_example=5,
+        model=config.model,
+        num_examples=100,
     )
-    print(results)
+
+    print(f"MedQA Results: {results}")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    asyncio.run(main())

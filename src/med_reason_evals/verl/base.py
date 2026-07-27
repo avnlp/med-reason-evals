@@ -227,17 +227,19 @@ class BaseVerlEvaluator(ABC):
                 print(f"Processed {count} examples, avg score: {avg:.3f}")
 
         avg_score = total_score / success_count if success_count else 0
-        return self._build_result(avg_score)
+        return self._build_result(avg_score, num_examples=success_count)
 
     @abstractmethod
     def _build_result(
         self,
         avg_score: float,
+        num_examples: int = 0,
     ) -> dict[str, Any]:
         """Build the result dictionary.
 
         Args:
             avg_score: The average score.
+            num_examples: Number of successfully evaluated examples.
 
         Returns:
             A dictionary with standardized result fields.

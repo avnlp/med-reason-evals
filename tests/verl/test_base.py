@@ -75,7 +75,7 @@ class ConcreteEvaluator(BaseVerlEvaluator):
     async def _evaluate_example(self, prompt, ground_truth, metadata=None):
         return 1.0
 
-    def _build_result(self, avg_score):
+    def _build_result(self, avg_score, num_examples: int = 0):
         return {"avg": avg_score}
 
 
@@ -142,7 +142,7 @@ class ConcreteMCQEvaluator(BaseMCQEvaluator):
             }
         )
 
-    def _build_result(self, avg_score):
+    def _build_result(self, avg_score, num_examples: int = 0):
         return {"avg": avg_score}
 
 
@@ -215,7 +215,7 @@ class ConcreteJudgeEvaluator(BaseJudgeEvaluator):
     async def _evaluate_example(self, prompt, ground_truth, metadata=None):
         return 1.0
 
-    def _build_result(self, avg_score):
+    def _build_result(self, avg_score, num_examples: int = 0):
         return {"avg": avg_score}
 
 
@@ -284,7 +284,7 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, avg_score):
+            def _build_result(self, avg_score, num_examples: int = 0):
                 return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
@@ -314,7 +314,7 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, avg_score):
+            def _build_result(self, avg_score, num_examples: int = 0):
                 return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
@@ -347,7 +347,7 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, avg_score):
+            def _build_result(self, avg_score, num_examples: int = 0):
                 return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
@@ -369,7 +369,7 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 0.5
 
-            def _build_result(self, avg_score):
+            def _build_result(self, avg_score, num_examples: int = 0):
                 return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
@@ -393,7 +393,7 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, avg_score):
+            def _build_result(self, avg_score, num_examples: int = 0):
                 return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
@@ -423,7 +423,7 @@ class TestEvaluateEdgeCases:
             async def _evaluate_example(self, prompt, ground_truth, metadata=None):
                 return 1.0
 
-            def _build_result(self, avg_score):
+            def _build_result(self, avg_score, num_examples: int = 0):
                 return {"avg": avg_score}
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):

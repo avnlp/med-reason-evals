@@ -6,8 +6,10 @@ logic and prompt shaping.
 """
 
 from med_reason_evals.data.base import BaseDataset
+from med_reason_evals.data.medqa import MedQADataset
 
 
 __all__ = [
     "BaseDataset",
+    "MedQADataset",
 ]
