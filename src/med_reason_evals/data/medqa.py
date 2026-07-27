@@ -1,97 +1,108 @@
-"""Load and process the MedQA dataset.
+"""Dataset adapter for the MedQA USMLE-style multiple-choice benchmark.
 
-Dataset: HuggingFace `GBaker/MedQA-USMLE-4-options` dataset.
-Each example is normalized to the following fields:
-{
-    "question": "<question + formatted options>",  # string used as the user prompt
-    "answer":   "<A|B|C|D>",                       # top-level gold letter
-    "info":     { ...original example fields... }  # full source row for debugging
-}
+The adapter reshapes MedQA questions into a fixed multiple-choice prompt for
+consistent evaluation across Verifiers and Verl pipelines.
 """
 
 from typing import Any
 
-from datasets import load_dataset
+from datasets import Dataset, IterableDataset, load_dataset
+
+from med_reason_evals.data.base import BaseDataset
 
 
-class MedQADataset:
-    """Process the MedQA dataset."""
+class MedQADataset(BaseDataset):
+    """MedQA-USMLE-4-options dataset for medical question answering.
+
+    The dataset mirrors USMLE-style questions and expects lettered responses.
+    """
+
+    DATASET_PATH = "GBaker/MedQA-USMLE-4-options"
+
+    NUM_OPTIONS = 4
 
     def __init__(
         self,
-        num_train_examples: int = -1,
-        num_test_examples: int = -1,
-    ):
-        """Initialize the MedQA dataset processor.
+        split: str = "test",
+        streaming: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize the MedQA dataset adapter.
 
         Args:
-            num_train_examples: Number of training examples to use (-1 for all)
-            num_test_examples: Number of test examples to use (-1 for all)
+            split: Dataset split to use ("train" or "test").
+            streaming: Whether to stream the dataset.
+            **kwargs: Additional arguments.
         """
-        self.num_train_examples = num_train_examples
-        self.num_test_examples = num_test_examples
-        self.rng_seed = 12345
+        super().__init__(split=split, streaming=streaming, **kwargs)
+        self._dataset = load_dataset(
+            self.DATASET_PATH,
+            split=split,
+            streaming=streaming,
+        )
 
-        # Load and process datasets on initialization
-        self.train_ds, self.test_ds = self._load_and_process_datasets()
+    @property
+    def num_options(self) -> int:
+        """Return the number of MCQ options (4 for MedQA)."""
+        return self.NUM_OPTIONS
 
-    def _load_and_process_datasets(self) -> tuple:
-        """Load and process the MedQA datasets."""
-        # Load the raw datasets
-        ds = load_dataset("GBaker/MedQA-USMLE-4-options")
-        train_raw = ds["train"]
-        test_raw = ds["test"]
+    def _build_prompt(self, question: str, options: dict[str, str]) -> str:
+        """Build a formatted prompt from question and options.
 
-        # Limit number of examples if specified
-        if self.num_train_examples != -1:
-            train_raw = train_raw.select(
-                range(min(self.num_train_examples, len(train_raw)))
-            )
-        if self.num_test_examples != -1:
-            test_raw = test_raw.select(
-                range(min(self.num_test_examples, len(test_raw)))
-            )
+        The prompt is deliberately minimal to match the original dataset style
+        while keeping option labeling explicit for downstream parsing.
+        """
+        opts = "\n".join(f"{k}. {v}" for k, v in options.items())
+        return f"Question: {question}\n\n{opts}\n\nAnswer:"
 
-        # Format datasets for verifiers
-        train_formatted = self._format_for_verifiers(train_raw, "train")
-        test_formatted = self._format_for_verifiers(test_raw, "test")
+    def _map_example(self, example: dict[str, Any]) -> dict[str, Any]:
+        """Map a raw example to verifiers format.
 
-        # Shuffle datasets
-        train_formatted = train_formatted.shuffle(seed=self.rng_seed)
-        test_formatted = test_formatted.shuffle(seed=self.rng_seed)
+        Unlike other datasets, MedQA examples are well-formed, so the mapping
+        passes through without additional filtering.
+        """
+        question = example.get("question", "")
+        options = example.get("options", {})
+        answer_letter = example.get("answer_idx", "").strip().upper()
 
-        return train_formatted, test_formatted
+        return {
+            "question": self._build_prompt(question, options),
+            "answer": answer_letter,
+            "info": {
+                "answer_text": options.get(answer_letter, ""),
+                "original_question": question,
+            },
+        }
 
-    def _format_for_verifiers(self, dataset: Any, split: str) -> Any:
-        """Format dataset for verifiers with question, answer, and info fields."""
-        valid = {"A", "B", "C", "D"}
+    def _map_example_verl(self, example: dict[str, Any]) -> dict[str, Any]:
+        """Map a raw example to Verl format.
 
-        def format_row(row: dict) -> dict:
-            row = dict(row)
+        The raw options are preserved in metadata to support alternative reward
+        strategies that consider answer text directly.
+        """
+        question = example.get("question", "")
+        options = example.get("options", {})
+        answer_letter = example.get("answer_idx", "").strip().upper()
 
-            # Build the user-visible question string (question + options)
-            q = row.get("question", "") or ""
-            opts = row.get("options", {}) or {}
+        prompt = self._build_prompt(question, options)
 
-            question_str = f"Question: {q}\n"
-            for k, v in opts.items():
-                # Skip null or empty values
-                if v is not None and v != "":
-                    question_str += f"\n{k}. {v}"
+        return {
+            "prompt": [{"role": "user", "content": prompt}],
+            "ground_truth": {
+                "answer": answer_letter,
+                "answer_text": options.get(answer_letter, ""),
+            },
+            "data_source": "medqa",
+            "metadata": {
+                "original_question": question,
+                "options": options,
+            },
+        }
 
-            # Lift the answer top-level, normalize to a single letter
-            ans = (row.get("answer_idx") or "").strip().upper()
-            if ans not in valid:
-                # Final guard: set to empty if unexpected
-                ans = ""
+    def get_verifiers_dataset(self) -> Dataset | IterableDataset:
+        """Return dataset formatted for verifiers evaluation."""
+        return self._dataset.map(self._map_example)
 
-            # Keep full original example under 'info'
-            info = dict(row)
-
-            return {
-                "question": question_str,
-                "answer": ans,
-                "info": info,
-            }
-
-        return dataset.map(format_row)
+    def get_verl_dataset(self) -> Dataset | IterableDataset:
+        """Return dataset formatted for Verl training."""
+        return self._dataset.map(self._map_example_verl)

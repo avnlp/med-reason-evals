@@ -7,6 +7,7 @@ from med_reason_evals.verl.base import (
     GroqGenConfig,
     JudgeConfig,
 )
+from med_reason_evals.verl.medqa import MedQAEvaluator
 from med_reason_evals.verl.rollouts import GroqRollouts, get_default_rollouts
 
 
@@ -16,6 +17,7 @@ __all__ = [
     "BaseJudgeEvaluator",
     "GroqGenConfig",
     "JudgeConfig",
+    "MedQAEvaluator",
     "GroqRollouts",
     "get_default_rollouts",
 ]

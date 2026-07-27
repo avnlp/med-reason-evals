@@ -34,6 +34,7 @@ from med_reason_evals.verifiers.base import (
     GroqGenConfig,
     JudgeConfig,
 )
+from med_reason_evals.verifiers.medqa import MedQAEvaluator
 from med_reason_evals.verifiers.rewards import (
     MCQAccuracyResult,
     accuracy_reward,
@@ -57,6 +58,8 @@ __all__ = [
     "BaseVerifierEvaluator",
     "GroqGenConfig",
     "JudgeConfig",
+    # Dataset evaluators
+    "MedQAEvaluator",
     # Rewards
     "MCQAccuracyResult",
     "accuracy_reward",
