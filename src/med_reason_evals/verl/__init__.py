@@ -9,6 +9,7 @@ from med_reason_evals.verl.base import (
 )
 from med_reason_evals.verl.med_mcqa import MedMCQAEvaluator
 from med_reason_evals.verl.medqa import MedQAEvaluator
+from med_reason_evals.verl.medxpertqa import MedXpertQAEvaluator
 from med_reason_evals.verl.metamedqa import MetaMedQAEvaluator
 from med_reason_evals.verl.mmlu_pro_health import MMLUProHealthEvaluator
 from med_reason_evals.verl.pubmedqa import PubMedQAEvaluator
@@ -23,6 +24,7 @@ __all__ = [
     "JudgeConfig",
     "MedMCQAEvaluator",
     "MedQAEvaluator",
+    "MedXpertQAEvaluator",
     "MetaMedQAEvaluator",
     "MMLUProHealthEvaluator",
     "PubMedQAEvaluator",
