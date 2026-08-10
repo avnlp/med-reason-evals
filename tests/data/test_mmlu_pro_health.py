@@ -601,6 +601,72 @@ class TestMMLUProHealthDataset:
         assert normalize_calls == len(mixed_examples)
 
     @patch("med_reason_evals.data.mmlu_pro_health.load_dataset")
+    def test_get_verifiers_dataset_all_invalid_first_batch(self, mock_load_dataset):
+        """An all-invalid first map batch must not corrupt the Arrow schema.
+
+        Empty ``_options`` lists infer as ``list<null>``, which would make the
+        in-memory map fail once later batches carry real option strings. The
+        string sentinel keeps the column typed as ``list<string>``.
+        """
+        # 1000 invalid rows fill the first default map batch (batch_size=1000),
+        # followed by valid rows that must still be writable to the column.
+        rows = [
+            {
+                "question": "",  # Invalid - empty
+                "options": ["A", "B", "C"],
+                "answer": "A",
+                "category": "health",
+            }
+            for _ in range(1000)
+        ]
+        rows.extend(
+            {
+                "question": f"Valid question {i}?",
+                "options": ["A", "B", "C"],
+                "answer": "A",
+                "category": "health",
+            }
+            for i in range(10)
+        )
+        mock_load_dataset.return_value = Dataset.from_list(rows)
+        dataset = MMLUProHealthDataset()
+
+        examples = list(dataset.get_verifiers_dataset())
+
+        assert len(examples) == 10
+        for ex in examples:
+            assert ex["answer"] == "A"
+
+    @patch("med_reason_evals.data.mmlu_pro_health.load_dataset")
+    def test_map_example_on_pre_normalized_invalid_row(
+        self, mock_load_dataset, mock_health_examples
+    ):
+        """Mappers must not crash on a row pre-normalized as invalid.
+
+        A row carrying the ``_normalize_row`` marker columns with ``_valid``
+        False must be treated as unmappable (placeholder output) rather than
+        indexing into its sentinel options.
+        """
+        mock_load_dataset.return_value = Dataset.from_list(mock_health_examples)
+        dataset = MMLUProHealthDataset()
+
+        invalid_row = {
+            "_valid": False,
+            "_question": "",
+            "_options": [""],
+            "_answer_letter": "",
+            "_answer_idx": -1,
+        }
+
+        verifiers = dataset._map_example(invalid_row)
+        assert verifiers == {"question": "", "answer": None, "info": {}}
+
+        verl = dataset._map_example_verl(invalid_row)
+        assert verl["prompt"] == []
+        assert verl["ground_truth"] is None
+        assert verl["metadata"] == {}
+
+    @patch("med_reason_evals.data.mmlu_pro_health.load_dataset")
     def test_num_options(self, mock_load_dataset, mock_health_examples):
         """Test num_options returns 10 for MMLU-Pro Health."""
         mock_load_dataset.return_value = Dataset.from_list(mock_health_examples)

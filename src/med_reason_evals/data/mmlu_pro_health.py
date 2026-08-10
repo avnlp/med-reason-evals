@@ -144,7 +144,11 @@ class MMLUProHealthDataset(BaseDataset):
             return {
                 "_valid": False,
                 "_question": "",
-                "_options": [],
+                # A list-of-string sentinel (not []) keeps the ``_options``
+                # column's Arrow type consistent across map batches: an empty
+                # list infers as ``list<null>``, which cannot later store real
+                # option strings when the first batch of rows is all invalid.
+                "_options": [""],
                 "_answer_letter": "",
                 "_answer_idx": -1,
             }
@@ -163,11 +167,14 @@ class MMLUProHealthDataset(BaseDataset):
     ) -> tuple[str, list[str], str, int] | None:
         """Return the normalized tuple for a row, reusing pre-attached fields.
 
-        Rows that flowed through ``_normalize_row`` carry the normalized fields
-        as columns, so the mappers reuse them instead of normalizing a second
-        time. Direct calls with a raw row (e.g. in tests) fall back to
-        ``_normalize_example`` so the two code paths cannot disagree about what
-        constitutes a usable row.
+        Rows that flowed through ``_normalize_row`` carry the ``_valid`` flag
+        and the normalized fields as columns, so the mappers reuse them
+        instead of normalizing a second time. Rows normalized as invalid
+        (``_valid`` False) return ``None`` here, routing them through the
+        mappers' placeholder path exactly as a raw row rejected by
+        ``_normalize_example`` would. Direct calls with a raw row (e.g. in
+        tests) fall back to ``_normalize_example`` so the cache path and the
+        validation path cannot disagree about what constitutes a usable row.
 
         Args:
             example: A dataset row (raw or pre-normalized).
@@ -176,7 +183,9 @@ class MMLUProHealthDataset(BaseDataset):
             A ``(question, options, answer_letter, answer_idx)`` tuple, or
             ``None`` if the example cannot be mapped.
         """
-        if "_options" in example:
+        if "_valid" in example:
+            if not example["_valid"]:
+                return None
             return (
                 example["_question"],
                 example["_options"],
