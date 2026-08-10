@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from med_reason_evals.verl import MedCaseReasoningEvaluator
+from med_reason_evals.verl.base import JudgeConfig
 
 
 if TYPE_CHECKING:
@@ -158,3 +159,42 @@ class TestMedCaseReasoningEvaluateExample:
             score = await evaluator._evaluate_example(prompt, ground_truth)
 
             assert score == 0.5
+
+    async def test_evaluate_example_reserved_judge_sampling_args(self, mocker):
+        """Reserved judge sampling args must not collide with explicit config.
+
+        max_tokens/temperature in sampling_args must not collide with the
+        explicit JudgeConfig fields passed to judge_score.
+        """
+        mock_judge_score = mocker.patch(
+            "med_reason_evals.verl.medcasereasoning.judge_score"
+        )
+        mock_judge_score.return_value = 1.0
+
+        with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
+            evaluator = MedCaseReasoningEvaluator(
+                judge_config=JudgeConfig(
+                    max_tokens=777,
+                    temperature=0.5,
+                    sampling_args={
+                        "max_tokens": 999,
+                        "temperature": 0.9,
+                        "top_p": 0.95,
+                    },
+                )
+            )
+            evaluator._rollouts = MagicMock()
+            evaluator._rollouts.generate = AsyncMock(
+                return_value="<answer>Diabetes</answer>"
+            )
+
+            prompt = [{"role": "user", "content": "Patient presents with..."}]
+            score = await evaluator._evaluate_example(prompt, {"target": "Diabetes"})
+
+        assert score == 1.0
+        call_kwargs = mock_judge_score.call_args.kwargs
+        # The explicit JudgeConfig fields stay authoritative over sampling_args.
+        assert call_kwargs["max_tokens"] == 777
+        assert call_kwargs["temperature"] == 0.5
+        # Genuinely additional sampling args are still forwarded.
+        assert call_kwargs["top_p"] == 0.95

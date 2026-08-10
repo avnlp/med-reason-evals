@@ -521,6 +521,86 @@ class TestMMLUProHealthDataset:
         assert len(examples) == 1
 
     @patch("med_reason_evals.data.mmlu_pro_health.load_dataset")
+    def test_get_verifiers_dataset_normalizes_once_per_row(self, mock_load_dataset):
+        """Each raw row is normalized exactly once across filter+map passes."""
+        mixed_examples = [
+            {
+                "question": "Valid question?",
+                "options": ["A", "B", "C"],
+                "answer": "A",
+                "category": "health",
+            },
+            {
+                "question": "",  # Invalid - empty
+                "options": ["A", "B", "C"],
+                "answer": "A",
+                "category": "health",
+            },
+            {
+                "question": "Another valid?",
+                "options": ["A", "B", "C"],
+                "answer": "Z",  # Invalid - out of range
+                "category": "health",
+            },
+        ]
+        mock_load_dataset.return_value = Dataset.from_list(mixed_examples)
+        dataset = MMLUProHealthDataset()
+
+        normalize_calls = 0
+        original_normalize = MMLUProHealthDataset._normalize_example
+
+        def counting_normalize(example):
+            nonlocal normalize_calls
+            normalize_calls += 1
+            return original_normalize(dataset, example)
+
+        dataset._normalize_example = counting_normalize  # type: ignore[method-assign]
+
+        examples = list(dataset.get_verifiers_dataset())
+
+        assert len(examples) == 1
+        # One normalization per raw row (valid and invalid alike), never a
+        # second pass inside the mapper.
+        assert normalize_calls == len(mixed_examples)
+
+    @patch("med_reason_evals.data.mmlu_pro_health.load_dataset")
+    def test_get_verl_dataset_normalizes_once_per_row(self, mock_load_dataset):
+        """Each raw row is normalized exactly once across filter+map passes."""
+        mixed_examples = [
+            {
+                "question": "Valid question?",
+                "options": ["A", "B", "C"],
+                "answer": "A",
+                "category": "health",
+                "cot_content": "",
+            },
+            {
+                "question": "",  # Invalid - empty
+                "options": ["A", "B", "C"],
+                "answer": "A",
+                "category": "health",
+                "cot_content": "",
+            },
+        ]
+        mock_load_dataset.return_value = Dataset.from_list(mixed_examples)
+        dataset = MMLUProHealthDataset()
+
+        normalize_calls = 0
+        original_normalize = MMLUProHealthDataset._normalize_example
+
+        def counting_normalize(example):
+            nonlocal normalize_calls
+            normalize_calls += 1
+            return original_normalize(dataset, example)
+
+        dataset._normalize_example = counting_normalize  # type: ignore[method-assign]
+
+        examples = list(dataset.get_verl_dataset())
+
+        assert len(examples) == 1
+        assert normalize_calls == len(mixed_examples)
+
+    @patch("med_reason_evals.data.mmlu_pro_health.load_dataset")
     def test_num_options(self, mock_load_dataset, mock_health_examples):
         """Test num_options returns 10 for MMLU-Pro Health."""
         mock_load_dataset.return_value = Dataset.from_list(mock_health_examples)

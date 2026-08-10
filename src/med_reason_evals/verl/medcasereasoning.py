@@ -100,6 +100,17 @@ Answer [yes/no]."""
             **self.gen_config.sampling_args,
         )
 
+        # ``sampling_args`` is a free-form dict unpacked into judge_score, which
+        # declares max_tokens/temperature as formal parameters. Filter those
+        # keys out so a user putting them in ``sampling_args`` doesn't crash the
+        # call with "got multiple values for keyword argument" -- the explicit
+        # JudgeConfig fields below remain authoritative.
+        judge_sampling_args = {
+            key: value
+            for key, value in self.judge_config.sampling_args.items()
+            if key not in ("max_tokens", "temperature")
+        }
+
         return await judge_score(
             solution_str=completion,
             ground_truth=ground_truth,
@@ -108,7 +119,7 @@ Answer [yes/no]."""
             judge_prompt=self.JUDGE_TEMPLATE,
             max_tokens=self.judge_config.max_tokens,
             temperature=self.judge_config.temperature,
-            **self.judge_config.sampling_args,
+            **judge_sampling_args,
         )
 
     def _build_result(
