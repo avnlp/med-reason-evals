@@ -113,6 +113,20 @@ class MMLUProHealthDataset(BaseDataset):
 
         return question, options, answer_letter, answer_idx
 
+    def _is_valid_example(self, example: dict[str, Any]) -> bool:
+        """Check whether a raw example is usable for evaluation.
+
+        Delegates validation to ``_normalize_example`` so the mappers and the
+        validator can never disagree about what constitutes a usable row.
+
+        Args:
+            example: A raw dataset row.
+
+        Returns:
+            True if the example is well-formed and usable for evaluation.
+        """
+        return self._normalize_example(example) is not None
+
     def _map_example(self, example: dict[str, Any]) -> dict[str, Any]:
         """Map a raw example to verifiers format."""
         normalized = self._normalize_example(example)
@@ -157,13 +171,18 @@ class MMLUProHealthDataset(BaseDataset):
         }
 
     def get_verifiers_dataset(self) -> Dataset | IterableDataset:
-        """Return dataset formatted for verifiers evaluation."""
-        mapped = self._dataset.map(self._map_example)
-        return mapped.filter(lambda x: x is not None and x.get("answer") is not None)
+        """Return dataset formatted for verifiers evaluation.
+
+        Invalid rows are filtered out before mapping, so the mapper never
+        emits placeholder rows that would otherwise shape the mapped
+        dataset's inferred features.
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example)
 
     def get_verl_dataset(self) -> Dataset | IterableDataset:
-        """Return dataset formatted for Verl training."""
-        mapped = self._dataset.map(self._map_example_verl)
-        return mapped.filter(
-            lambda x: x is not None and x.get("ground_truth") is not None
-        )
+        """Return dataset formatted for Verl training.
+
+        Invalid rows are filtered out before mapping (see
+        ``get_verifiers_dataset``).
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example_verl)

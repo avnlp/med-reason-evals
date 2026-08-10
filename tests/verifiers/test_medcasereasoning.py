@@ -33,14 +33,19 @@ class TestMedCaseReasoningDatasetLoading:
         with patch(
             "med_reason_evals.data.medcasereasoning.load_dataset",
             mock_load_dataset_factory(medcasereasoning_mock_dataset),
-        ):
+        ) as mock_load:
             evaluator = MedCaseReasoningEvaluator()
             train_ds, eval_ds = evaluator._load_datasets()
 
         assert train_ds is not None
         assert eval_ds is not None
+        assert train_ds is not eval_ds
         assert "question" in eval_ds.column_names
         assert "answer" in eval_ds.column_names
+        # Each split must be requested with its own name so train/eval
+        # separation is real rather than both loading the same split.
+        assert mock_load.call_args_list[0].kwargs["split"] == "train"
+        assert mock_load.call_args_list[1].kwargs["split"] == "val"
 
     def test_case_prompt_mapped_to_question(
         self,
