@@ -13,7 +13,7 @@ from typing import Any
 
 import verifiers as vf
 from datasets import load_dataset
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from openai import OpenAI
 
 
@@ -73,7 +73,7 @@ def classification_reward_func(
 
 def main() -> None:
     """Run evaluation on PubMedQA."""
-    load_dotenv()
+    load_dotenv(find_dotenv(usecwd=True))
 
     # Load datasets
     dataset_path = "qiaojin/PubMedQA"

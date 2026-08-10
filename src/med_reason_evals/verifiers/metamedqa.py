@@ -12,7 +12,7 @@ import os
 from typing import Any
 
 import verifiers as vf
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from openai import OpenAI
 
 from med_reason_evals.data.metamedqa import MetaMedQADataset
@@ -65,8 +65,8 @@ class LetterParser:
 
 def main() -> None:
     """Run the evaluation on the MetaMedQA dataset."""
-    # Load environment variables
-    load_dotenv()
+    # Load environment variables from the working directory (and parents)
+    load_dotenv(find_dotenv(usecwd=True))
 
     # Create an instance of the processor
     dataset = MetaMedQADataset(split="test", num_examples=-1)
