@@ -182,3 +182,25 @@ class TestPubHealthBenchEvaluateExample:
             assert score == 1.0
             call_kwargs = mock_hybrid_score.call_args.kwargs
             assert call_kwargs["metadata"] == {}
+
+    async def test_evaluate_example_mcq_without_judge_key(self, mocker):
+        """MCQ examples must score locally without a judge API key."""
+        mock_hybrid_score = mocker.patch(
+            "med_reason_evals.verl.pubhealthbench.hybrid_score"
+        )
+        mock_hybrid_score.return_value = 1.0
+
+        with patch.dict("os.environ", {}, clear=True):
+            evaluator = PubHealthBenchEvaluator()
+            evaluator._rollouts = MagicMock()
+            evaluator._rollouts.generate = AsyncMock(return_value="<answer>A</answer>")
+
+            prompt = [{"role": "user", "content": "Question"}]
+            ground_truth = {"answer": "A"}
+            metadata = {"is_mcq": True}
+
+            score = await evaluator._evaluate_example(prompt, ground_truth, metadata)
+
+            assert score == 1.0
+            call_kwargs = mock_hybrid_score.call_args.kwargs
+            assert call_kwargs["judge_client"] is None

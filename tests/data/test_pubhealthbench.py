@@ -264,6 +264,68 @@ class TestPubHealthBenchDataset:
         assert result["answer"] == "B"
 
     @patch("med_reason_evals.data.pubhealthbench.load_dataset")
+    def test_map_example_mcq_seven_options_with_answer_index(
+        self, mock_load_dataset, mock_mixed_examples
+    ):
+        """Test mapping MCQ with seven options resolved via answer_index."""
+        mock_load_dataset.return_value = Dataset.from_list(mock_mixed_examples)
+        dataset = PubHealthBenchDataset()
+
+        example = {
+            "question": "What is the cause?",
+            "options": ["o1", "o2", "o3", "o4", "o5", "o6", "o7"],
+            "answer": "o7",
+            "answer_index": 6,
+        }
+
+        result = dataset._map_example(example)
+
+        assert result["answer"] == "G"
+        assert result["info"]["answer_text"] == "o7"
+        assert "G. o7" in result["question"]
+
+    @patch("med_reason_evals.data.pubhealthbench.load_dataset")
+    def test_map_example_verl_mcq_seven_options_with_answer_index(
+        self, mock_load_dataset, mock_mixed_examples
+    ):
+        """Test Verl mapping with seven options resolved via answer_index."""
+        mock_load_dataset.return_value = Dataset.from_list(mock_mixed_examples)
+        dataset = PubHealthBenchDataset()
+
+        example = {
+            "question": "What is the cause?",
+            "options": ["o1", "o2", "o3", "o4", "o5", "o6", "o7"],
+            "answer": "o7",
+            "answer_index": 6,
+        }
+
+        result = dataset._map_example_verl(example)
+
+        assert result["ground_truth"]["answer"] == "G"
+        assert result["ground_truth"]["answer_text"] == "o7"
+        assert "G. o7" in result["prompt"][0]["content"]
+
+    @patch("med_reason_evals.data.pubhealthbench.load_dataset")
+    def test_map_example_mcq_out_of_range_answer_index(
+        self, mock_load_dataset, mock_mixed_examples
+    ):
+        """Test that an out-of-range answer_index degrades to None."""
+        mock_load_dataset.return_value = Dataset.from_list(mock_mixed_examples)
+        dataset = PubHealthBenchDataset()
+
+        example = {
+            "question": "What is the cause?",
+            "options": ["o1", "o2", "o3"],
+            "answer": "nonexistent",
+            "answer_index": 99,
+        }
+
+        result = dataset._map_example(example)
+
+        assert result["answer"] is None
+        assert result["question"] == ""
+
+    @patch("med_reason_evals.data.pubhealthbench.load_dataset")
     def test_map_example_mcq_no_match(self, mock_load_dataset, mock_mixed_examples):
         """Test mapping MCQ where answer doesn't match any option or letter."""
         mock_load_dataset.return_value = Dataset.from_list(mock_mixed_examples)

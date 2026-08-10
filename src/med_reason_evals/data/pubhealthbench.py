@@ -4,6 +4,7 @@ PubHealthBench includes both multiple-choice and freeform answers, so this
 adapter normalizes prompts and ground-truth fields for each question type.
 """
 
+import string
 from typing import Any
 
 from datasets import Dataset, IterableDataset, load_dataset
@@ -19,6 +20,10 @@ class PubHealthBenchDataset(BaseDataset):
     """
 
     DATASET_PATH = "Joshua-Harris/PubHealthBench"
+    #: Letter labels for MCQ options (A-Z, enough for any realistic option list).
+    LETTERS = string.ascii_uppercase
+    #: Supported question_type filter values.
+    QUESTION_TYPES = ("mcq", "freeform", "all")
 
     def __init__(
         self,
@@ -32,16 +37,26 @@ class PubHealthBenchDataset(BaseDataset):
         Args:
             split: Dataset split to use.
             streaming: Whether to stream the dataset.
-            question_type: Filter by type ("mcq", "freeform", "all").
-            **kwargs: Additional arguments.
+            question_type: Filter by type (``"mcq"``, ``"freeform"``, ``"all"``).
+            **kwargs: Additional arguments forwarded to ``load_dataset()``
+                (e.g. ``revision``, ``cache_dir``).
+
+        Raises:
+            ValueError: If ``question_type`` is not one of ``QUESTION_TYPES``.
         """
         super().__init__(split=split, streaming=streaming, **kwargs)
-        self.question_type = question_type.lower().strip()
+        self.question_type = (question_type or "").lower().strip()
+        if self.question_type not in self.QUESTION_TYPES:
+            raise ValueError(
+                f"Invalid question_type {question_type!r}; expected one of "
+                f"{', '.join(self.QUESTION_TYPES)}"
+            )
 
         dataset = load_dataset(
             self.DATASET_PATH,
             split=split,
             streaming=streaming,
+            **kwargs,
         )
 
         # Pre-filter by question type to avoid mapping large unused splits.
@@ -72,13 +87,49 @@ class PubHealthBenchDataset(BaseDataset):
 
     def _build_mcq_prompt(self, question: str, options: list[str]) -> str:
         """Build a formatted MCQ prompt with lettered choices."""
-        letters = ["A", "B", "C", "D", "E", "F"][: len(options)]
+        letters = self.LETTERS[: len(options)]
         opts = "\n".join(f"{ltr}. {opt}" for ltr, opt in zip(letters, options))
         return f"Question: {question}\n\n{opts}\n\nAnswer:"
 
     def _build_freeform_prompt(self, question: str) -> str:
         """Build a freeform question prompt."""
         return f"Question: {question}\n\nAnswer:"
+
+    def _resolve_mcq_answer(self, example: dict[str, Any]) -> tuple[str, str] | None:
+        """Resolve an MCQ example's answer to ``(letter, answer_text)``.
+
+        The answer may be encoded as an ``answer_index``, as the option text
+        itself, or as a single letter.  Only indices within the letter table
+        are accepted, so oversized option lists degrade to ``None`` (filtered
+        by the pipeline) instead of raising ``IndexError``.
+
+        Returns:
+            A ``(answer_letter, answer_text)`` tuple, or ``None`` if the
+            answer cannot be mapped to a valid letter.
+        """
+        options = example.get("options", []) or []
+        answer = (example.get("answer") or "").strip()
+        letters = self.LETTERS[: len(options)]
+
+        answer_letter: str | None = None
+        answer_idx_field = example.get("answer_index")
+        if isinstance(answer_idx_field, int) and 0 <= answer_idx_field < len(letters):
+            answer_letter = letters[answer_idx_field]
+        else:
+            for i, opt in enumerate(options):
+                if i >= len(letters):
+                    break
+                if opt.strip().lower() == answer.lower():
+                    answer_letter = letters[i]
+                    break
+            if answer_letter is None and answer.upper() in letters:
+                answer_letter = answer.upper()
+
+        if answer_letter is None:
+            return None
+
+        answer_idx = letters.index(answer_letter)
+        return answer_letter, options[answer_idx]
 
     def _map_example(self, example: dict[str, Any]) -> dict[str, Any]:
         """Map a raw example to verifiers format.
@@ -96,32 +147,15 @@ class PubHealthBenchDataset(BaseDataset):
         options = example.get("options", []) or []
 
         if is_mcq:
-            letters = ["A", "B", "C", "D", "E", "F"][: len(options)]
-            answer_letter = None
-            answer_idx_field = example.get("answer_index")
-            if isinstance(answer_idx_field, int) and 0 <= answer_idx_field < len(
-                options
-            ):
-                answer_letter = letters[answer_idx_field]
-            else:
-                for i, opt in enumerate(options):
-                    if opt.strip().lower() == answer.lower():
-                        answer_letter = letters[i]
-                        break
-                if answer_letter is None and answer.upper() in letters:
-                    answer_letter = answer.upper()
-
-            if answer_letter is None:
+            resolved = self._resolve_mcq_answer(example)
+            if resolved is None:
                 return {"question": "", "answer": None, "info": {}}
-
-            answer_idx = letters.index(answer_letter)
+            answer_letter, answer_text = resolved
             return {
                 "question": self._build_mcq_prompt(question, options),
                 "answer": answer_letter,
                 "info": {
-                    "answer_text": (
-                        options[answer_idx] if answer_idx < len(options) else answer
-                    ),
+                    "answer_text": answer_text,
                     "is_mcq": True,
                 },
             }
@@ -154,36 +188,19 @@ class PubHealthBenchDataset(BaseDataset):
         options = example.get("options", []) or []
 
         if is_mcq:
-            letters = ["A", "B", "C", "D", "E", "F"][: len(options)]
-            answer_letter = None
-            answer_idx_field = example.get("answer_index")
-            if isinstance(answer_idx_field, int) and 0 <= answer_idx_field < len(
-                options
-            ):
-                answer_letter = letters[answer_idx_field]
-            else:
-                for i, opt in enumerate(options):
-                    if opt.strip().lower() == answer.lower():
-                        answer_letter = letters[i]
-                        break
-                if answer_letter is None and answer.upper() in letters:
-                    answer_letter = answer.upper()
-
-            if answer_letter is None:
+            resolved = self._resolve_mcq_answer(example)
+            if resolved is None:
                 return {
                     "prompt": [],
                     "ground_truth": None,
                     "data_source": "pubhealthbench",
                     "metadata": {},
                 }
-
-            answer_idx = letters.index(answer_letter)
+            answer_letter, answer_text = resolved
             prompt = self._build_mcq_prompt(question, options)
             ground_truth = {
                 "answer": answer_letter,
-                "answer_text": (
-                    options[answer_idx] if answer_idx < len(options) else answer
-                ),
+                "answer_text": answer_text,
             }
         else:
             prompt = self._build_freeform_prompt(question)

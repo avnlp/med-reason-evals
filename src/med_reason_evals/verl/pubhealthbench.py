@@ -97,11 +97,12 @@ class PubHealthBenchEvaluator(BaseJudgeEvaluator):
             **self.gen_config.sampling_args,
         )
 
+        metadata = metadata or {}
         return await hybrid_score(
             solution_str=completion,
             ground_truth=ground_truth,
-            metadata=metadata or {},
-            judge_client=self.judge_client,
+            metadata=metadata,
+            judge_client=(None if metadata.get("is_mcq", False) else self.judge_client),
             judge_model=self.judge_config.model,
         )
 
