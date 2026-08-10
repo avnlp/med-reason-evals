@@ -11,7 +11,7 @@ Dataset: HuggingFace `mkieffer/Medbullets` dataset.
 import os
 
 import verifiers as vf
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from openai import OpenAI
 from verifiers.utils.data_utils import extract_boxed_answer
 
@@ -23,8 +23,8 @@ from med_reason_evals.verifiers.answer_correctness_reward import (
 
 def main() -> None:
     """Run the evaluation on the Medbullets dataset."""
-    # Load environment variables
-    load_dotenv()
+    # Load environment variables from the working directory (and parents)
+    load_dotenv(find_dotenv(usecwd=True))
 
     # Create an instance of the processor
     dataset = MedBulletsDataset(
