@@ -14,6 +14,9 @@ from med_reason_evals.verl.base import BaseJudgeEvaluator, GroqGenConfig, JudgeC
 from med_reason_evals.verl.rewards.healthbench_rubric import (
     compute_score as rubric_score,
 )
+from med_reason_evals.verl.rewards.healthbench_rubric import (
+    format_conversation,
+)
 
 
 class HealthBenchEvaluator(BaseJudgeEvaluator):
@@ -52,6 +55,7 @@ class HealthBenchEvaluator(BaseJudgeEvaluator):
         )
         self.difficulty = difficulty
         self.max_parallel_judges = max_parallel_judges
+        self._judge_semaphore: asyncio.Semaphore | None = None
 
     def _load_dataset(self) -> IterableDataset:
         """Load the HealthBench dataset.
@@ -82,8 +86,15 @@ class HealthBenchEvaluator(BaseJudgeEvaluator):
             Normalized score from 0.0 to 1.0.
         """
         # No system prompt for HealthBench - uses dataset prompts
-        completion = await self.rollouts.generate(messages=prompt)
+        completion = await self.rollouts.generate(
+            messages=prompt,
+            **self.gen_config.sampling_args,
+        )
 
+        # Give the judge the original question/context so rubric criteria that
+        # reference it are scored with conversational grounding, and share one
+        # semaphore across examples so judge traffic is capped globally.
+        conversation = format_conversation(prompt)
         return await rubric_score(
             solution_str=completion,
             ground_truth=ground_truth,
@@ -92,7 +103,23 @@ class HealthBenchEvaluator(BaseJudgeEvaluator):
             max_parallel_judges=self.max_parallel_judges,
             max_tokens=self.judge_config.max_tokens,
             temperature=self.judge_config.temperature,
+            conversation=conversation,
+            semaphore=self._get_judge_semaphore(),
         )
+
+    def _get_judge_semaphore(self) -> asyncio.Semaphore:
+        """Return the shared judge-request semaphore, creating it on first use.
+
+        A single semaphore is shared across all concurrently evaluated examples
+        so that ``max_parallel_judges`` acts as a global cap on judge API
+        traffic rather than a per-example limit.
+
+        Returns:
+            The evaluator-wide judge concurrency semaphore.
+        """
+        if self._judge_semaphore is None:
+            self._judge_semaphore = asyncio.Semaphore(self.max_parallel_judges)
+        return self._judge_semaphore
 
     def _build_result(
         self,

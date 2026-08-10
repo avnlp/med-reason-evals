@@ -5,10 +5,12 @@ Tests cover main() function, dataset loading, result building, and _evaluate_exa
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from med_reason_evals.verl import HealthBenchEvaluator
+from med_reason_evals.verl.base import GroqGenConfig
 
 
 if TYPE_CHECKING:
@@ -157,9 +159,17 @@ class TestHealthBenchEvaluateExample:
             assert call_kwargs["solution_str"] == "Some answer"
             assert call_kwargs["ground_truth"] == ground_truth
             assert call_kwargs["max_parallel_judges"] == 3
+            # The question must reach the judge for contextual scoring, and
+            # judge concurrency must be shared via an evaluator-wide semaphore.
+            assert call_kwargs["conversation"] == "user: Evaluate this case..."
+            assert isinstance(call_kwargs["semaphore"], asyncio.Semaphore)
 
-    async def test_evaluate_example_no_metadata(self, mocker):
-        """Test _evaluate_example without metadata."""
+    async def test_evaluate_example_with_metadata_ignored(self, mocker):
+        """Test _evaluate_example with metadata explicitly passed.
+
+        Metadata is accepted but not used for rubric scoring, so the score is
+        identical to an example evaluated without it.
+        """
         mock_rubric_score = mocker.patch(
             "med_reason_evals.verl.healthbench.rubric_score"
         )
@@ -173,6 +183,35 @@ class TestHealthBenchEvaluateExample:
             prompt = [{"role": "user", "content": "Question"}]
             ground_truth = {"criteria": [], "points_list": []}
 
-            score = await evaluator._evaluate_example(prompt, ground_truth)
+            score = await evaluator._evaluate_example(
+                prompt,
+                ground_truth,
+                metadata={"prompt_id": "hb_001", "difficulty": "regular"},
+            )
 
             assert score == 0.75
+            mock_rubric_score.assert_called_once()
+
+    async def test_evaluate_example_forwards_sampling_args(self, mocker):
+        """Test gen_config.sampling_args are forwarded to generate."""
+        mock_rubric_score = mocker.patch(
+            "med_reason_evals.verl.healthbench.rubric_score"
+        )
+        mock_rubric_score.return_value = 0.8
+
+        gen_config = GroqGenConfig(sampling_args={"temperature": 0.7})
+        with patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}):
+            evaluator = HealthBenchEvaluator(gen_config=gen_config)
+            evaluator._rollouts = MagicMock()
+            evaluator._rollouts.generate = AsyncMock(return_value="Answer")
+
+            prompt = [{"role": "user", "content": "Question"}]
+            await evaluator._evaluate_example(
+                prompt,
+                {"criteria": ["criterion1"], "points_list": [1]},
+            )
+
+        evaluator._rollouts.generate.assert_called_once_with(
+            messages=prompt,
+            temperature=0.7,
+        )

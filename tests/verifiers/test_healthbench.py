@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
 import verifiers as vf
 from verifiers import JudgeRubric
 
@@ -41,6 +42,21 @@ class TestHealthBenchDatasetLoading:
         assert eval_ds is not None
         assert "question" in eval_ds.column_names
         assert "answer" in eval_ds.column_names
+
+    def test_streaming_rejected(
+        self,
+        mock_load_dataset_factory: Callable[[Dataset], MagicMock],
+        healthbench_mock_dataset: Dataset,
+    ) -> None:
+        """Test that streaming=True raises because verifiers need random access."""
+        with (
+            patch(
+                "med_reason_evals.data.healthbench.load_dataset",
+                mock_load_dataset_factory(healthbench_mock_dataset),
+            ),
+            pytest.raises(ValueError, match="do not support streaming"),
+        ):
+            HealthBenchEvaluator(streaming=True)
 
 
 class TestHealthBenchEnvironment:

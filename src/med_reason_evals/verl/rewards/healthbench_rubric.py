@@ -51,6 +51,29 @@ Return a JSON object with:
 Return just the JSON object."""
 
 
+def format_conversation(prompt: list[dict[str, str]]) -> str:
+    """Render role-tagged prompt messages into plain conversation text.
+
+    The judge template renders this into the '# Question/Context' section so
+    that rubric criteria are scored with the original question in context.
+
+    Args:
+        prompt: List of message dicts with 'role' and 'content' keys.
+
+    Returns:
+        A newline-separated rendering of the non-empty messages, or an empty
+        string when no message has content.
+    """
+    lines = []
+    for message in prompt:
+        if isinstance(message, dict):
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if content:
+                lines.append(f"{role}: {content}")
+    return "\n\n".join(lines)
+
+
 async def evaluate_criterion(
     response: str,
     criterion: str,
@@ -122,6 +145,7 @@ async def compute_score(
     max_tokens: int = 500,
     temperature: float = 0.0,
     conversation: str = "",
+    semaphore: asyncio.Semaphore | None = None,
 ) -> float:
     """Compute the reward score using multi-criteria rubric evaluation.
 
@@ -137,6 +161,9 @@ async def compute_score(
         max_tokens: Maximum tokens for each judge response.
         temperature: Sampling temperature.
         conversation: The original question/prompt context.
+        semaphore: Optional shared semaphore limiting concurrent judge requests.
+            When omitted, a per-call semaphore is created; passing a shared one
+            lets callers cap judge concurrency globally across examples.
 
     Returns:
         Normalized score between 0.0 and 1.0.
@@ -162,8 +189,12 @@ async def compute_score(
     if max_parallel_judges < 1:
         raise ValueError(f"max_parallel_judges must be >= 1, got {max_parallel_judges}")
 
-    # Evaluate all criteria in parallel with semaphore
-    semaphore = asyncio.Semaphore(max_parallel_judges)
+    # Evaluate all criteria in parallel with semaphore. Use a caller-provided
+    # semaphore when available so judge concurrency is capped globally instead
+    # of per example (each example otherwise multiplies the request rate by
+    # the number of concurrently evaluated examples).
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(max_parallel_judges)
     tasks = [
         evaluate_criterion(
             response=solution_str,

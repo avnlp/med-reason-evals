@@ -26,7 +26,6 @@ from med_reason_evals.verifiers.base import (
     BaseJudgeEvaluator,
     GroqGenConfig,
     JudgeConfig,
-    env_dataset_streaming_default,
 )
 from med_reason_evals.verifiers.rewards.judge_rubric import healthbench_rubric_reward
 
@@ -48,16 +47,18 @@ class HealthBenchEvaluator(BaseJudgeEvaluator):
             difficulty: Difficulty level of the questions ("regular" or other).
             max_parallel_judges: Maximum number of parallel judge evaluations.
             streaming: Whether to use streaming mode for dataset loading.
-                Defaults to False if not specified.
+                Streaming is not supported by verifiers environments (they
+                require random-access ``datasets.Dataset`` objects), so passing
+                ``True`` raises ``ValueError``.
             judge_config: Configuration for the judge model.
             judge_api_key: API key for the judge model.
         """
         super().__init__(judge_config=judge_config, judge_api_key=judge_api_key)
         self.difficulty = difficulty
         self.max_parallel_judges = max_parallel_judges
-        self.streaming = (
-            env_dataset_streaming_default() if streaming is None else streaming
-        )
+        if streaming:
+            raise ValueError("Verifiers environments do not support streaming datasets")
+        self.streaming = False
 
     def _load_datasets(self) -> tuple[Dataset | None, Dataset]:
         dataset = HealthBenchDataset(

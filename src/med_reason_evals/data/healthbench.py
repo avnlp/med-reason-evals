@@ -26,7 +26,7 @@ class HealthBenchDataset(BaseDataset):
 
     def __init__(
         self,
-        split: str = "test",
+        split: str | None = None,
         streaming: bool = True,
         difficulty: str = "regular",
         **kwargs: Any,
@@ -34,29 +34,36 @@ class HealthBenchDataset(BaseDataset):
         """Initialize the HealthBench dataset adapter.
 
         Args:
-            split: Dataset split to use.
+            split: Dataset split to load. Defaults to ``"test"`` for
+                ``difficulty="regular"`` and ``"train"`` otherwise, which are
+                the partitions each difficulty variant ships with. An explicit
+                value is honored as-is.
             streaming: Whether to stream the dataset.
             difficulty: Dataset difficulty (``"regular"``, ``"consensus"``,
                 ``"hard"``). Unsupported values raise ``ValueError`` so a typo
                 fails fast instead of silently producing an empty evaluation
                 set.
-            **kwargs: Additional arguments.
+            **kwargs: Additional arguments forwarded to ``load_dataset``
+                (e.g. ``revision``, ``cache_dir``).
 
         Raises:
             ValueError: If ``difficulty`` is not one of the allowed values.
         """
-        super().__init__(split=split, streaming=streaming, **kwargs)
-        self.difficulty = difficulty
-
         if difficulty not in self.DATASET_MAPPING:
             raise ValueError(f"Invalid difficulty: {difficulty}")
+        self.difficulty = difficulty
 
-        # HealthBench uses a test split for regular and train for others.
-        actual_split = "test" if difficulty == "regular" else "train"
+        # The regular variant exposes a test split, while consensus and hard
+        # only ship a train split. Derive the default partition from the
+        # difficulty, but honor an explicitly requested split so ``self.split``
+        # always reflects the partition that was actually loaded.
+        actual_split = split or ("test" if difficulty == "regular" else "train")
+        super().__init__(split=actual_split, streaming=streaming, **kwargs)
         self._dataset = load_dataset(
             self.DATASET_MAPPING[difficulty],
             split=actual_split,
             streaming=streaming,
+            **kwargs,
         )
 
     @property

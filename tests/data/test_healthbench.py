@@ -93,11 +93,26 @@ class TestHealthBenchDataset:
         """Test initialization with hard difficulty uses train split."""
         mock_load_dataset.return_value = Dataset.from_list(mock_examples)
 
-        HealthBenchDataset(difficulty="hard")
+        dataset = HealthBenchDataset(difficulty="hard")
 
         mock_load_dataset.assert_called_once_with(
             "neuralleap/healthbench-hard",
             split="train",
+            streaming=True,
+        )
+        assert dataset.split == "train"
+
+    @patch("med_reason_evals.data.healthbench.load_dataset")
+    def test_initialization_explicit_split(self, mock_load_dataset, mock_examples):
+        """Test an explicitly requested split is honored over the difficulty default."""
+        mock_load_dataset.return_value = Dataset.from_list(mock_examples)
+
+        dataset = HealthBenchDataset(split="validation")
+
+        assert dataset.split == "validation"
+        mock_load_dataset.assert_called_once_with(
+            "neuralleap/healthbench-regular",
+            split="validation",
             streaming=True,
         )
 
@@ -236,6 +251,9 @@ class TestHealthBenchDataset:
         for ex in examples:
             assert "prompt" in ex
             assert "ground_truth" in ex
+        # Variant routing is recorded in metadata; guard against a regression
+        # where a row gets tagged with the wrong difficulty.
+        assert examples[0]["metadata"]["difficulty"] == "regular"
 
     @patch("med_reason_evals.data.healthbench.load_dataset")
     def test_get_verifiers_dataset_streaming(self, mock_load_dataset, mock_examples):
