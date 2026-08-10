@@ -7,6 +7,7 @@ from med_reason_evals.verl.base import (
     GroqGenConfig,
     JudgeConfig,
 )
+from med_reason_evals.verl.healthbench import HealthBenchEvaluator
 from med_reason_evals.verl.med_mcqa import MedMCQAEvaluator
 from med_reason_evals.verl.medcasereasoning import MedCaseReasoningEvaluator
 from med_reason_evals.verl.medqa import MedQAEvaluator
@@ -23,6 +24,7 @@ __all__ = [
     "BaseJudgeEvaluator",
     "GroqGenConfig",
     "JudgeConfig",
+    "HealthBenchEvaluator",
     "MedCaseReasoningEvaluator",
     "MedMCQAEvaluator",
     "MedQAEvaluator",
