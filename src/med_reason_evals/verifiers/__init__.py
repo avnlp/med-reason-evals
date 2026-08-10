@@ -45,6 +45,7 @@ from med_reason_evals.verifiers.base import (
     JudgeConfig,
 )
 from med_reason_evals.verifiers.med_mcqa import MedMCQAEvaluator
+from med_reason_evals.verifiers.medcasereasoning import MedCaseReasoningEvaluator
 from med_reason_evals.verifiers.medqa import MedQAEvaluator
 from med_reason_evals.verifiers.metamedqa import MetaMedQAEvaluator
 from med_reason_evals.verifiers.mmlu_pro_health import MMLUProHealthEvaluator
@@ -73,6 +74,7 @@ __all__ = [
     "GroqGenConfig",
     "JudgeConfig",
     # Dataset evaluators
+    "MedCaseReasoningEvaluator",
     "MedMCQAEvaluator",
     "MedQAEvaluator",
     "MetaMedQAEvaluator",

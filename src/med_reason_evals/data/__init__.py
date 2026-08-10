@@ -7,6 +7,7 @@ logic and prompt shaping.
 
 from med_reason_evals.data.base import BaseDataset
 from med_reason_evals.data.med_mcqa import MedMCQADataset
+from med_reason_evals.data.medcasereasoning import MedCaseReasoningDataset
 from med_reason_evals.data.medqa import MedQADataset
 from med_reason_evals.data.metamedqa import MetaMedQADataset
 from med_reason_evals.data.mmlu_pro_health import MMLUProHealthDataset
@@ -15,6 +16,7 @@ from med_reason_evals.data.pubmedqa import PubMedQADataset
 
 __all__ = [
     "BaseDataset",
+    "MedCaseReasoningDataset",
     "MedMCQADataset",
     "MedQADataset",
     "MetaMedQADataset",
