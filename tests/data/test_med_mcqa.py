@@ -231,13 +231,51 @@ class TestMedMCQAIsValidExample:
         example["opd"] = ""
         assert MedMCQADataset._is_valid_example(example) is False
 
-    def test_returns_true_when_some_options_present(self):
-        """Test returns True when at least one option is present."""
+    def test_returns_false_when_some_options_missing(self):
+        """Test returns False when not all four options are present."""
         example = self._valid_example()
         example["opb"] = ""
         example["opc"] = ""
         example["opd"] = ""
-        assert MedMCQADataset._is_valid_example(example) is True
+        assert MedMCQADataset._is_valid_example(example) is False
+
+    def test_returns_false_when_gold_option_blank(self):
+        """Test returns False when the gold option (pointed to by cop) is blank."""
+        example = self._valid_example()
+        example["cop"] = 2
+        example["opb"] = ""
+        assert MedMCQADataset._is_valid_example(example) is False
+
+    def test_extract_options_valid(self):
+        """Test _extract_options returns cleaned fields for a valid example."""
+        example = self._valid_example()
+        example["cop"] = 2
+
+        result = MedMCQADataset._extract_options(example)
+
+        assert result == (
+            "What is the most likely diagnosis?",
+            ["Option A", "Option B", "Option C", "Option D"],
+            1,  # zero-based index of cop=2
+        )
+
+    def test_extract_options_strips_whitespace(self):
+        """Test _extract_options strips surrounding whitespace from fields."""
+        example = self._valid_example()
+        example["question"] = "  What is the diagnosis?  "
+        example["opa"] = "  Option A  "
+
+        result = MedMCQADataset._extract_options(example)
+
+        assert result is not None
+        assert result[0] == "What is the diagnosis?"
+        assert result[1][0] == "Option A"
+
+    def test_extract_options_returns_none_for_malformed(self):
+        """Test _extract_options returns None for a malformed example."""
+        example = self._valid_example()
+        example["cop"] = "1"
+        assert MedMCQADataset._extract_options(example) is None
 
     @patch("med_reason_evals.data.med_mcqa.load_dataset")
     def test_get_verifiers_dataset_filters_invalid(self, mock_load_dataset):
@@ -340,3 +378,85 @@ class TestMedMCQAIsValidExample:
         examples = list(result)
 
         assert len(examples) == 2
+
+    @patch("med_reason_evals.data.med_mcqa.load_dataset")
+    def test_get_verifiers_dataset_filters_blank_option_row(self, mock_load_dataset):
+        """Test that a row with a blank option (incl. the gold one) is dropped."""
+        valid = {
+            "question": "What is the most likely diagnosis?",
+            "opa": "Option A",
+            "opb": "Option B",
+            "opc": "Option C",
+            "opd": "Option D",
+            "cop": 1,
+        }
+        blank_option = {
+            "question": "Which drug is first-line for type 2 diabetes?",
+            "opa": "Metformin",
+            "opb": "Insulin",
+            "opc": "",
+            "opd": "DPP-4 inhibitor",
+            "cop": 1,
+        }
+        blank_gold = {
+            "question": "What is the treatment for gout?",
+            "opa": "Allopurinol",
+            "opb": "",
+            "opc": "Colchicine",
+            "opd": "NSAIDs",
+            "cop": 2,  # gold option is opb, which is blank
+        }
+        mock_load_dataset.return_value = Dataset.from_list(
+            [valid, blank_option, blank_gold]
+        )
+        dataset = MedMCQADataset()
+
+        result = dataset.get_verifiers_dataset()
+        examples = list(result)
+
+        assert len(examples) == 1
+        assert examples[0]["answer"] == "A"
+        assert examples[0]["info"]["answer_text"] == "Option A"
+
+    @patch("med_reason_evals.data.med_mcqa.load_dataset")
+    def test_get_verl_dataset_filters_blank_gold_option(self, mock_load_dataset):
+        """Test that a blank gold option is dropped from the verl dataset."""
+        valid = {
+            "question": "What is the most likely diagnosis?",
+            "opa": "Option A",
+            "opb": "Option B",
+            "opc": "Option C",
+            "opd": "Option D",
+            "cop": 1,
+        }
+        blank_gold = {
+            "question": "What is the treatment for gout?",
+            "opa": "Allopurinol",
+            "opb": "",
+            "opc": "Colchicine",
+            "opd": "NSAIDs",
+            "cop": 2,
+        }
+        mock_load_dataset.return_value = Dataset.from_list([valid, blank_gold])
+        dataset = MedMCQADataset()
+
+        result = dataset.get_verl_dataset()
+        examples = list(result)
+
+        assert len(examples) == 1
+        assert examples[0]["ground_truth"]["answer"] == "A"
+
+    def test_map_example_raises_on_malformed(self):
+        """Test that _map_example raises when given a malformed example."""
+        dataset = MedMCQADataset.__new__(MedMCQADataset)
+        malformed = {
+            "question": "Test?",
+            "opa": "A",
+            "opb": "",
+            "opc": "C",
+            "opd": "D",
+            "cop": 1,
+        }
+
+        with pytest.raises(ValueError, match="Malformed MedMCQA example"):
+            dataset._map_example(malformed)

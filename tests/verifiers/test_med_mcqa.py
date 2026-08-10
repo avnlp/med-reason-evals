@@ -48,7 +48,13 @@ class TestMedMCQADatasetLoading:
         mock_load_dataset_factory: Callable[[Dataset], MagicMock],
         med_mcqa_mock_dataset: Dataset,
     ) -> None:
-        """Test that _load_datasets correctly maps cop field to answer."""
+        """Test that _load_datasets correctly maps cop field to answer.
+
+        The conftest mock dataset uses ``cop=[1, 1]`` and ``opa=["Lisinopril",
+        "COX inhibition"]``, so both rows must map to ``A`` with the matching
+        answer text. A hardcoded letter or off-by-one ``cop`` decoding would
+        fail these value assertions.
+        """
         with patch(
             "med_reason_evals.data.med_mcqa.load_dataset",
             mock_load_dataset_factory(med_mcqa_mock_dataset),
@@ -56,9 +62,11 @@ class TestMedMCQADatasetLoading:
             evaluator = MedMCQAEvaluator(streaming=False)
             _, eval_ds = evaluator._load_datasets()
 
-        # Check answer is mapped from cop (1-indexed to letter)
         assert eval_ds is not None
-        assert "answer" in eval_ds.column_names
+        # cop=1 is 1-indexed -> zero-based 0 -> letter A
+        assert eval_ds["answer"][0] == "A"
+        assert eval_ds["info"][0]["answer_text"] == "Lisinopril"
+        assert eval_ds["info"][1]["answer_text"] == "COX inhibition"
 
 
 class TestMedMCQAEnvironment:
