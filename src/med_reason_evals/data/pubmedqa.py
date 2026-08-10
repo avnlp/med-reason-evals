@@ -1,130 +1,146 @@
-"""Load and process the PubMedQA dataset.
+"""Dataset adapter for the PubMedQA yes/no/maybe benchmark.
 
-Dataset: HuggingFace `qiaojin/PubMedQA` dataset.
-Each example is normalized to the following fields:
-{
-    "question": "<formatted question with context>",  # complete prompt with abstract
-    "answer":   "<A|B|C>",                           # A=yes, B=no, C=maybe
-    "info":     { ...original example fields... }    # full source row for debugging
-}
+Uses the canonical 500-example human-annotated test split from
+``openlifescienceai/pubmedqa``, which pre-splits the labeled set so results
+are directly comparable to the published PubMedQA leaderboard.
 """
 
-import json
-import os
 from typing import Any
 
-from datasets import load_dataset
+from datasets import Dataset, IterableDataset, load_dataset
+
+from med_reason_evals.data.base import BaseDataset
 
 
-class PubMedQADataset:
-    """Process the PubMedQA dataset."""
+class PubMedQADataset(BaseDataset):
+    """PubMedQA dataset for biomedical research question answering."""
+
+    DATASET_PATH = "openlifescienceai/pubmedqa"
+    OPTIONS = {"A": "Yes", "B": "No", "C": "Maybe"}
+
+    PROMPT_TEMPLATE = """Select the best answer.
+
+Context: {context}
+
+Question: {question}
+
+{options_block}
+
+Answer:"""
 
     def __init__(
         self,
-        num_train_examples: int = -1,
-        num_test_examples: int = -1,
-    ):
-        """Initialize the PubMedQA dataset processor.
+        split: str = "test",
+        streaming: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize the PubMedQA dataset adapter.
 
         Args:
-            num_train_examples: Number of training examples to use (-1 for all)
-            num_test_examples: Number of test examples to use (-1 for all)
+            split: Dataset split to use (``"test"`` for the canonical
+                500-example evaluation split).
+            streaming: Whether to stream the dataset.
+            **kwargs: Additional keyword arguments forwarded to
+                ``load_dataset()`` (e.g. ``revision``, ``cache_dir``).
         """
-        self.num_train_examples = num_train_examples
-        self.num_test_examples = num_test_examples
-        self.rng_seed = 12345
-        self.dataset_path = "qiaojin/PubMedQA"
-
-        # Load and process datasets on initialization
-        self.train_ds, self.test_ds = self._load_and_process_datasets()
-
-    def _load_and_process_datasets(self) -> tuple:
-        """Load and process the PubMedQA datasets."""
-        # Load the raw datasets
-        # pqa_artificial is the training set, pqa_labeled is the test set
-        train_raw = load_dataset(
-            self.dataset_path, name="pqa_artificial", split="train"
+        super().__init__(split=split, streaming=streaming, **kwargs)
+        self._dataset = load_dataset(
+            self.DATASET_PATH,
+            split=split,
+            streaming=streaming,
+            **kwargs,
         )
-        test_raw = load_dataset(self.dataset_path, name="pqa_labeled", split="train")
 
-        # Filter test set to only include human-annotated samples
-        test_raw = self._filter_test_set(test_raw)
+    @property
+    def num_options(self) -> int:
+        """Return the number of answer options (3 for yes/no/maybe)."""
+        return len(self.OPTIONS)
 
-        # Limit number of examples if specified
-        if self.num_train_examples != -1:
-            train_raw = train_raw.select(
-                range(min(self.num_train_examples, len(train_raw)))
-            )
-        if self.num_test_examples != -1:
-            test_raw = test_raw.select(
-                range(min(self.num_test_examples, len(test_raw)))
-            )
+    @staticmethod
+    def _is_valid_example(example: dict[str, Any]) -> bool:
+        """Check whether a raw example has a valid question and answer letter.
 
-        # Format datasets
-        train_formatted = self._format_dataset(train_raw, "train")
-        test_formatted = self._format_dataset(test_raw, "test")
+        Args:
+            example: A raw dataset row.
 
-        # Shuffle datasets
-        train_formatted = train_formatted.shuffle(seed=self.rng_seed)
-        test_formatted = test_formatted.shuffle(seed=self.rng_seed)
+        Returns:
+            True if the example is usable for evaluation.
+        """
+        data = example.get("data", {}) or {}
+        question = (data.get("Question") or "").strip()
+        answer_letter = (data.get("Correct Option") or "").strip()
+        return bool(question) and answer_letter in PubMedQADataset.OPTIONS
 
-        return train_formatted, test_formatted
+    def _build_prompt(self, question: str, context: str) -> str:
+        """Build a formatted prompt with a fixed A/B/C answer block."""
+        options_block = "\n".join(f"{k}. {v}" for k, v in self.OPTIONS.items())
+        return self.PROMPT_TEMPLATE.format(
+            context=context,
+            question=question,
+            options_block=options_block,
+        )
 
-    def _filter_test_set(self, dataset: Any) -> Any:
-        """Filter test set to only include human-annotated samples (500 from 1000)."""
-        # Load the predefined test IDs
-        here = os.path.dirname(__file__)
-        file_path = os.path.join(here, "data", "test_ground_truth.json")
+    def _map_example(self, example: dict[str, Any]) -> dict[str, Any] | None:
+        """Map a raw example to verifiers format.
 
-        try:
-            with open(file_path) as f:
-                test_ids = json.load(f)
+        Returns None for rows missing a valid question or answer letter.
+        """
+        data = example.get("data", {}) or {}
+        question = (data.get("Question") or "").strip()
+        answer_letter = (data.get("Correct Option") or "").strip()
+        context_list = data.get("Context", []) or []
 
-            # Filter to only the 500 human-annotated samples
-            return dataset.filter(lambda sample: str(sample["pubid"]) in test_ids)
-        except FileNotFoundError:
-            # If the file doesn't exist, return the full test set
-            print(f"Warning: {file_path} not found. Using full test set.")
-            return dataset
+        if not question or answer_letter not in self.OPTIONS:
+            return None
 
-    def _format_dataset(self, dataset: Any, split: str) -> Any:
-        """Format dataset with question, answer, and info fields."""
-        choices_map = {"yes": "A", "no": "B", "maybe": "C"}
-        prompt_template = "Answer A for yes, B for no or C for maybe.\n\nContext: {context}\n\nQuestion: {question}\nAnswer:"
+        context = "\n".join(context_list)
+        return {
+            "question": self._build_prompt(question, context),
+            "answer": answer_letter,
+            "info": {
+                "answer_text": self.OPTIONS[answer_letter],
+            },
+        }
 
-        def format_row(row: dict) -> dict:
-            row = dict(row)
+    def _map_example_verl(self, example: dict[str, Any]) -> dict[str, Any] | None:
+        """Map a raw example to Verl format.
 
-            # Extract question
-            question_text = row.get("question", "") or ""
+        Returns None for rows missing a valid question or answer letter.
+        """
+        data = example.get("data", {}) or {}
+        question = (data.get("Question") or "").strip()
+        answer_letter = (data.get("Correct Option") or "").strip()
+        context_list = data.get("Context", []) or []
 
-            # Extract and format context
-            context_dict = row.get("context", {}) or {}
-            labels = context_dict.get("labels", []) or []
-            contexts = context_dict.get("contexts", []) or []
+        if not question or answer_letter not in self.OPTIONS:
+            return None
 
-            # Format contexts with their labels
-            formatted_contexts = []
-            for label, context in zip(labels, contexts):
-                formatted_contexts.append(f"{label}. {context}")
-            context_text = "\n".join(formatted_contexts)
+        context = "\n".join(context_list)
+        prompt = self._build_prompt(question, context)
+        return {
+            "prompt": [{"role": "user", "content": prompt}],
+            "ground_truth": {
+                "answer": answer_letter,
+                "answer_text": self.OPTIONS[answer_letter],
+            },
+            "data_source": "pubmedqa",
+            "metadata": {},
+        }
 
-            # Build complete prompt
-            complete_prompt = prompt_template.format(
-                context=context_text, question=question_text
-            )
+    def get_verifiers_dataset(self) -> Dataset | IterableDataset:
+        """Return dataset formatted for verifiers evaluation.
 
-            # Map final decision to letter (A/B/C)
-            final_decision = (row.get("final_decision", "") or "").lower()
-            answer = choices_map.get(final_decision, "")
+        Invalid rows are filtered out before mapping, so the mapper never
+        sees (or returns ``None`` for) malformed examples. This is required
+        for the lazy ``IterableDataset`` streaming path, where a ``None``
+        mapping result raises ``TypeError`` instead of being dropped.
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example)
 
-            # Keep full original example under 'info'
-            info = dict(row)
+    def get_verl_dataset(self) -> Dataset | IterableDataset:
+        """Return dataset formatted for Verl training.
 
-            return {
-                "question": complete_prompt,
-                "answer": answer,
-                "info": info,
-            }
-
-        return dataset.map(format_row, load_from_cache_file=False)
+        Invalid rows are filtered out before mapping (see
+        ``get_verifiers_dataset`` for why this matters under streaming).
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example_verl)
