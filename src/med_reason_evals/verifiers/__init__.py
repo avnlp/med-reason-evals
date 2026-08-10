@@ -47,6 +47,7 @@ from med_reason_evals.verifiers.base import (
 from med_reason_evals.verifiers.med_mcqa import MedMCQAEvaluator
 from med_reason_evals.verifiers.medqa import MedQAEvaluator
 from med_reason_evals.verifiers.metamedqa import MetaMedQAEvaluator
+from med_reason_evals.verifiers.mmlu_pro_health import MMLUProHealthEvaluator
 from med_reason_evals.verifiers.pubmedqa import PubMedQAEvaluator
 from med_reason_evals.verifiers.rewards import (
     MCQAccuracyResult,
@@ -75,6 +76,7 @@ __all__ = [
     "MedMCQAEvaluator",
     "MedQAEvaluator",
     "MetaMedQAEvaluator",
+    "MMLUProHealthEvaluator",
     "PubMedQAEvaluator",
     # Rewards
     "MCQAccuracyResult",
