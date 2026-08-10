@@ -83,7 +83,10 @@ def medbullets_mock_dataset() -> Dataset:
 
 @pytest.fixture
 def medxpertqa_mock_dataset() -> Dataset:
-    """Create mock MedXpertQA dataset with representative rows."""
+    """Create mock MedXpertQA dataset with representative rows.
+
+    Mirrors the Text config schema, which always has exactly ten options (A-J).
+    """
     return Dataset.from_dict(
         {
             "question": [
@@ -96,12 +99,24 @@ def medxpertqa_mock_dataset() -> Dataset:
                     "B": "Insulin",
                     "C": "Sulfonylurea",
                     "D": "DPP-4 inhibitor",
+                    "E": "SGLT2 inhibitor",
+                    "F": "Thiazolidinedione",
+                    "G": "GLP-1 receptor agonist",
+                    "H": "Meglitinide",
+                    "I": "Alpha-glucosidase inhibitor",
+                    "J": "Bile acid sequestrant",
                 },
                 {
                     "A": "CT angiography",
                     "B": "V/Q scan",
                     "C": "Chest X-ray",
                     "D": "D-dimer",
+                    "E": "MRI chest",
+                    "F": "Ultrasound",
+                    "G": "Echocardiogram",
+                    "H": "Pulmonary function test",
+                    "I": "Bronchoscopy",
+                    "J": "Pleural fluid analysis",
                 },
             ],
             "label": ["A", "A"],

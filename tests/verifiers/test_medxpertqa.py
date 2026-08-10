@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from med_reason_evals.verifiers.medxpertqa import MedXpertQAEvaluator
 from med_reason_evals.verifiers.utils.prompts import AnswerFormat
 
@@ -105,46 +107,27 @@ class TestMedXpertQARubricConfiguration:
 class TestMedXpertQAQuestionType:
     """Tests for MedXpertQA question_type parameter."""
 
-    def test_question_type_all(
-        self,
-        mock_load_dataset_factory: Callable[[Dataset], MagicMock],
-        medxpertqa_mock_dataset: Dataset,
-    ) -> None:
-        """Verify question_type='all' is accepted."""
+    @pytest.mark.parametrize("question_type", ["all", "reasoning", "understanding"])
+    def test_question_type_forwarded_to_dataset(self, question_type: str) -> None:
+        """Verify question_type is stored and forwarded to MedXpertQADataset.
+
+        Patching the adapter class asserts that the evaluator actually passes
+        the parameter through to the dataset loader, so the value is not just
+        stashed on an attribute.
+        """
         with patch(
-            "med_reason_evals.data.medxpertqa.load_dataset",
-            mock_load_dataset_factory(medxpertqa_mock_dataset),
-        ):
-            evaluator = MedXpertQAEvaluator(question_type="all", streaming=False)
-
-            assert evaluator.question_type == "all"
-
-    def test_question_type_reasoning(
-        self,
-        mock_load_dataset_factory: Callable[[Dataset], MagicMock],
-        medxpertqa_mock_dataset: Dataset,
-    ) -> None:
-        """Verify question_type='reasoning' is accepted."""
-        with patch(
-            "med_reason_evals.data.medxpertqa.load_dataset",
-            mock_load_dataset_factory(medxpertqa_mock_dataset),
-        ):
-            evaluator = MedXpertQAEvaluator(question_type="reasoning", streaming=False)
-
-            assert evaluator.question_type == "reasoning"
-
-    def test_question_type_understanding(
-        self,
-        mock_load_dataset_factory: Callable[[Dataset], MagicMock],
-        medxpertqa_mock_dataset: Dataset,
-    ) -> None:
-        """Verify question_type='understanding' is accepted."""
-        with patch(
-            "med_reason_evals.data.medxpertqa.load_dataset",
-            mock_load_dataset_factory(medxpertqa_mock_dataset),
-        ):
+            "med_reason_evals.verifiers.medxpertqa.MedXpertQADataset"
+        ) as mock_dataset_cls:
             evaluator = MedXpertQAEvaluator(
-                question_type="understanding", streaming=False
+                question_type=question_type, streaming=False
             )
+            train_ds, eval_ds = evaluator._load_datasets()
 
-            assert evaluator.question_type == "understanding"
+        assert evaluator.question_type == question_type
+        assert train_ds is None
+        assert eval_ds is not None
+        mock_dataset_cls.assert_called_once_with(
+            split="test",
+            streaming=False,
+            question_type=question_type,
+        )

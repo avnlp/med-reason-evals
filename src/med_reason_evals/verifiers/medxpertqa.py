@@ -2,8 +2,9 @@
 
 Evaluator for the MedXpertQA dataset, a challenging medical reasoning
 benchmark with questions at different difficulty levels. This evaluator
-supports both text-based and image-based questions through the question_type
-parameter.
+handles the Text config only (fixed ten-choice multiple-choice questions);
+the ``question_type`` parameter selects reasoning/understanding subsets and
+does not enable image-based evaluation.
 
 MedXpertQA tests medical knowledge across various clinical scenarios
 with expert-level complexity. The evaluator uses the standard MCQ pattern
