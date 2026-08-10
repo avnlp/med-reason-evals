@@ -8,6 +8,7 @@ from med_reason_evals.verl.base import (
     JudgeConfig,
 )
 from med_reason_evals.verl.med_mcqa import MedMCQAEvaluator
+from med_reason_evals.verl.medcasereasoning import MedCaseReasoningEvaluator
 from med_reason_evals.verl.medqa import MedQAEvaluator
 from med_reason_evals.verl.medxpertqa import MedXpertQAEvaluator
 from med_reason_evals.verl.metamedqa import MetaMedQAEvaluator
@@ -22,6 +23,7 @@ __all__ = [
     "BaseJudgeEvaluator",
     "GroqGenConfig",
     "JudgeConfig",
+    "MedCaseReasoningEvaluator",
     "MedMCQAEvaluator",
     "MedQAEvaluator",
     "MedXpertQAEvaluator",
