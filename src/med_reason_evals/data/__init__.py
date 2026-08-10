@@ -13,6 +13,7 @@ from med_reason_evals.data.medqa import MedQADataset
 from med_reason_evals.data.medxpertqa import MedXpertQADataset
 from med_reason_evals.data.metamedqa import MetaMedQADataset
 from med_reason_evals.data.mmlu_pro_health import MMLUProHealthDataset
+from med_reason_evals.data.pubhealthbench import PubHealthBenchDataset
 from med_reason_evals.data.pubmedqa import PubMedQADataset
 
 
@@ -25,5 +26,6 @@ __all__ = [
     "MedXpertQADataset",
     "MetaMedQADataset",
     "MMLUProHealthDataset",
+    "PubHealthBenchDataset",
     "PubMedQADataset",
 ]

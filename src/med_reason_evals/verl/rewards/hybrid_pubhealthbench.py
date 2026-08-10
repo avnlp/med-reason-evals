@@ -39,7 +39,7 @@ async def compute_score(
     solution_str: str,
     ground_truth: dict[str, Any],
     metadata: dict[str, Any],
-    judge_client: AsyncOpenAI,
+    judge_client: AsyncOpenAI | None = None,
     judge_model: str = "openai/gpt-oss-120b",
     format_score: float = 0.0,
     score: float = 1.0,
@@ -56,7 +56,7 @@ async def compute_score(
         solution_str: The model's solution text.
         ground_truth: Dict with 'answer' or 'target' key.
         metadata: Dict with 'is_mcq' key indicating question type.
-        judge_client: The OpenAI client for judging (used for freeform).
+        judge_client: The OpenAI client for judging (required for freeform).
         judge_model: The model to use for judging.
         format_score: Score for correct format but wrong answer.
         score: Score for correct answer.
@@ -70,6 +70,8 @@ async def compute_score(
     is_mcq = metadata.get("is_mcq", False)
     if is_mcq is True:
         return mcq_score(solution_str, ground_truth, format_score, score)
+    if judge_client is None:
+        raise ValueError("judge_client is required for freeform examples")
     return await judge_score(
         solution_str=solution_str,
         ground_truth=ground_truth,

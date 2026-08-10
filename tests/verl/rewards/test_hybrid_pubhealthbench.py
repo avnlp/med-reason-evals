@@ -37,6 +37,34 @@ class TestComputeScore:
             mock_mcq.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_compute_score_mcq_branch_without_judge_client(self):
+        """MCQ routing should not require a judge client."""
+        with patch(
+            "med_reason_evals.verl.rewards.hybrid_pubhealthbench.mcq_score",
+            return_value=0.5,
+        ) as mock_mcq:
+            result = await compute_score(
+                solution_str="<answer>A</answer>",
+                ground_truth={"answer": "A"},
+                metadata={"is_mcq": True},
+                judge_client=None,
+            )
+
+            assert result == 0.5
+            mock_mcq.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_compute_score_judge_branch_requires_client(self):
+        """Freeform routing should raise a clear error without a judge client."""
+        with pytest.raises(ValueError, match="judge_client"):
+            await compute_score(
+                solution_str="<answer>Some answer</answer>",
+                ground_truth={"target": "Expected"},
+                metadata={"is_mcq": False},
+                judge_client=None,
+            )
+
+    @pytest.mark.asyncio
     async def test_compute_score_judge_branch(self):
         """Freeform metadata should route to judge_score."""
         with patch(
