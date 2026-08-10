@@ -4,6 +4,9 @@ The adapter handles normalization of multilingual text and maps answer text
 back to option letters. This is necessary because MetaMedQA stores the full
 answer text rather than option indices, requiring fuzzy matching after
 text normalization to handle Unicode variations across languages.
+
+Each raw row carries six lettered choices (A-F), where E and F are the fixed
+"None of the above" and "I don't know or cannot answer" responses.
 """
 
 from typing import Any
@@ -11,7 +14,7 @@ from typing import Any
 from datasets import Dataset, IterableDataset, load_dataset
 
 from med_reason_evals.data.base import BaseDataset
-from med_reason_evals.utils.text import nfkc_casefold
+from med_reason_evals.utils.text import nfkc_casefold, normalize_spaces
 
 
 class MetaMedQADataset(BaseDataset):
@@ -22,7 +25,7 @@ class MetaMedQADataset(BaseDataset):
     """
 
     DATASET_PATH = "maximegmd/MetaMedQA"
-    NUM_OPTIONS = 5
+    NUM_OPTIONS = 6
 
     def __init__(
         self,
@@ -35,28 +38,32 @@ class MetaMedQADataset(BaseDataset):
         Args:
             split: Dataset split to use.
             streaming: Whether to stream the dataset.
-            **kwargs: Additional arguments.
+            **kwargs: Additional keyword arguments forwarded to
+                ``load_dataset()`` (e.g. ``revision``, ``cache_dir``).
         """
         super().__init__(split=split, streaming=streaming, **kwargs)
         self._dataset = load_dataset(
             self.DATASET_PATH,
             split=split,
             streaming=streaming,
+            **kwargs,
         )
 
     @property
     def num_options(self) -> int:
-        """Return the number of MCQ options (5 for MetaMedQA)."""
+        """Return the number of MCQ options (6 for MetaMedQA)."""
         return self.NUM_OPTIONS
 
     def _normalize_text(self, text: str) -> str:
         """Normalize text for comparison across languages.
 
         NFKC normalization handles compatibility characters (e.g., full-width
-        digits used in some locales), while casefold enables case-insensitive
-        matching that works across Unicode scripts, not just ASCII.
+        digits used in some locales), casefold enables case-insensitive
+        matching that works across Unicode scripts, not just ASCII, and
+        whitespace runs are collapsed so formatting differences (double spaces,
+        tabs, line wraps) do not break exact-string matching.
         """
-        return nfkc_casefold(text).strip()
+        return normalize_spaces(nfkc_casefold(text))
 
     def _find_answer_letter(
         self,
@@ -67,7 +74,8 @@ class MetaMedQADataset(BaseDataset):
 
         Since the dataset provides answer text but evaluators expect letters,
         we compare normalized forms to handle minor formatting differences
-        (extra whitespace, Unicode variants) that occur in multilingual data.
+        (internal whitespace, Unicode variants, casing) that occur in
+        multilingual data.
         """
         norm_answer = self._normalize_text(answer_text)
         for letter, text in options.items():

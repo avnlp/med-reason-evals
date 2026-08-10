@@ -43,7 +43,7 @@ class TestMetaMedQADatasetLoading:
         mock_load_dataset_factory: Callable[[Dataset], MagicMock],
         metamedqa_mock_dataset: Dataset,
     ) -> None:
-        """Test that text-based answers are mapped correctly."""
+        """Test that text-based answers are mapped to option letters."""
         with patch(
             "med_reason_evals.data.metamedqa.load_dataset",
             mock_load_dataset_factory(metamedqa_mock_dataset),
@@ -51,8 +51,9 @@ class TestMetaMedQADatasetLoading:
             evaluator = MetaMedQAEvaluator(streaming=False)
             _, eval_ds = evaluator._load_datasets()
 
-            # Check answers are text-based (not letters)
-            assert "answer" in eval_ds.column_names
+            # Answer text ("Triple therapy", "Tetracycline") maps to letter "A"
+            assert eval_ds[0]["answer"] == "A"
+            assert eval_ds[1]["answer"] == "A"
 
 
 class TestMetaMedQAEnvironment:

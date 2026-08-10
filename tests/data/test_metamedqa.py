@@ -59,6 +59,36 @@ class TestMetaMedQADataset:
         )
 
     @patch("med_reason_evals.data.metamedqa.load_dataset")
+    def test_initialization_forwards_kwargs(self, mock_load_dataset, mock_examples):
+        """Test that extra kwargs are forwarded to load_dataset."""
+        mock_load_dataset.return_value = Dataset.from_list(mock_examples)
+
+        dataset = MetaMedQADataset(
+            split="test",
+            streaming=False,
+            revision="abc123",
+            cache_dir="/tmp/cache",
+        )
+
+        assert dataset.split == "test"
+        assert dataset.streaming is False
+        mock_load_dataset.assert_called_once_with(
+            "maximegmd/MetaMedQA",
+            split="test",
+            streaming=False,
+            revision="abc123",
+            cache_dir="/tmp/cache",
+        )
+
+    @patch("med_reason_evals.data.metamedqa.load_dataset")
+    def test_num_options(self, mock_load_dataset, mock_examples):
+        """Test num_options returns 6 for MetaMedQA."""
+        mock_load_dataset.return_value = Dataset.from_list(mock_examples)
+        dataset = MetaMedQADataset()
+
+        assert dataset.num_options == 6
+
+    @patch("med_reason_evals.data.metamedqa.load_dataset")
     def test_map_example_valid(self, mock_load_dataset, mock_examples):
         """Test mapping a valid example with answer matching an option."""
         mock_load_dataset.return_value = Dataset.from_list(mock_examples)
@@ -94,21 +124,47 @@ class TestMetaMedQADataset:
 
     @patch("med_reason_evals.data.metamedqa.load_dataset")
     def test_map_example_unicode_normalized(self, mock_load_dataset, mock_examples):
-        """Test that Unicode normalization enables matching."""
+        """Test that NFKC normalization and case folding enable matching."""
         mock_load_dataset.return_value = Dataset.from_list(mock_examples)
         dataset = MetaMedQADataset()
 
-        # Use full-width characters that NFKC normalizes to ASCII
+        # Full-width characters that NFKC normalizes to ASCII, plus different case
         example = {
             "question": "Test?",
-            "options": {"A": "First", "B": "SECOND"},
-            "answer": "second",  # Different case
+            "options": {"A": "First", "B": "ＳＥＣＯＮＤ"},
+            "answer": "second",
         }
 
         result = dataset._map_example(example)
 
         assert result is not None
         assert result["answer"] == "B"
+
+    @patch("med_reason_evals.data.metamedqa.load_dataset")
+    def test_map_example_collapses_internal_whitespace(
+        self, mock_load_dataset, mock_examples
+    ):
+        """Test that internal whitespace differences do not break matching."""
+        mock_load_dataset.return_value = Dataset.from_list(mock_examples)
+        dataset = MetaMedQADataset()
+
+        examples = [
+            {
+                "question": "Test?",
+                "options": {"A": "First", "B": "ACE  inhibitors"},
+                "answer": "ACE inhibitors",  # double space in option
+            },
+            {
+                "question": "Test?",
+                "options": {"A": "First", "B": "Vitamin\nC"},
+                "answer": "Vitamin C",  # line break in option
+            },
+        ]
+
+        results = [dataset._map_example(ex) for ex in examples]
+
+        assert all(r is not None for r in results)
+        assert [r["answer"] for r in results] == ["B", "B"]
 
     @patch("med_reason_evals.data.metamedqa.load_dataset")
     def test_map_example_empty_question(self, mock_load_dataset, mock_examples):
@@ -189,7 +245,7 @@ class TestMetaMedQADataset:
 
         assert len(examples) == 2
         for ex in examples:
-            assert ex["answer"] in ["A", "B", "C", "D", "E"]
+            assert ex["answer"] in ["A", "B", "C", "D", "E", "F"]
 
     @patch("med_reason_evals.data.metamedqa.load_dataset")
     def test_get_verl_dataset(self, mock_load_dataset, mock_examples):
@@ -225,7 +281,7 @@ class TestMetaMedQADataset:
 
         assert len(examples) == 2
         for ex in examples:
-            assert ex["answer"] in ["A", "B", "C", "D", "E"]
+            assert ex["answer"] in ["A", "B", "C", "D", "E", "F"]
 
     @patch("med_reason_evals.data.metamedqa.load_dataset")
     def test_get_verl_dataset_filters_invalid(self, mock_load_dataset, mock_examples):
