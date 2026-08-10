@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "datasets",
+  "pyarrow<25", # pyarrow 25.x has no cp312 wheels (CI uses Python 3.12)
   "openai",
   "tenacity",
   "verifiers==0.1.9.post3",
