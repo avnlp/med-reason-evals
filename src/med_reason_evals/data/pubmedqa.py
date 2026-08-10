@@ -40,19 +40,36 @@ Answer:"""
             split: Dataset split to use (``"test"`` for the canonical
                 500-example evaluation split).
             streaming: Whether to stream the dataset.
-            **kwargs: Additional arguments.
+            **kwargs: Additional keyword arguments forwarded to
+                ``load_dataset()`` (e.g. ``revision``, ``cache_dir``).
         """
         super().__init__(split=split, streaming=streaming, **kwargs)
         self._dataset = load_dataset(
             self.DATASET_PATH,
             split=split,
             streaming=streaming,
+            **kwargs,
         )
 
     @property
     def num_options(self) -> int:
         """Return the number of answer options (3 for yes/no/maybe)."""
         return len(self.OPTIONS)
+
+    @staticmethod
+    def _is_valid_example(example: dict[str, Any]) -> bool:
+        """Check whether a raw example has a valid question and answer letter.
+
+        Args:
+            example: A raw dataset row.
+
+        Returns:
+            True if the example is usable for evaluation.
+        """
+        data = example.get("data", {}) or {}
+        question = (data.get("Question") or "").strip()
+        answer_letter = (data.get("Correct Option") or "").strip()
+        return bool(question) and answer_letter in PubMedQADataset.OPTIONS
 
     def _build_prompt(self, question: str, context: str) -> str:
         """Build a formatted prompt with a fixed A/B/C answer block."""
@@ -111,13 +128,19 @@ Answer:"""
         }
 
     def get_verifiers_dataset(self) -> Dataset | IterableDataset:
-        """Return dataset formatted for verifiers evaluation."""
-        mapped = self._dataset.map(self._map_example)
-        return mapped.filter(lambda x: x is not None and x.get("answer") is not None)
+        """Return dataset formatted for verifiers evaluation.
+
+        Invalid rows are filtered out before mapping, so the mapper never
+        sees (or returns ``None`` for) malformed examples. This is required
+        for the lazy ``IterableDataset`` streaming path, where a ``None``
+        mapping result raises ``TypeError`` instead of being dropped.
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example)
 
     def get_verl_dataset(self) -> Dataset | IterableDataset:
-        """Return dataset formatted for Verl training."""
-        mapped = self._dataset.map(self._map_example_verl)
-        return mapped.filter(
-            lambda x: x is not None and x.get("ground_truth") is not None
-        )
+        """Return dataset formatted for Verl training.
+
+        Invalid rows are filtered out before mapping (see
+        ``get_verifiers_dataset`` for why this matters under streaming).
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example_verl)

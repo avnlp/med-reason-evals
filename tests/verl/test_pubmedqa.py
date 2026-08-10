@@ -105,3 +105,4 @@ class TestPubMedQABuildResult:
                 expected_dataset="pubmedqa",
             )
             assert result["num_examples"] == 3
+            assert result["avg_score"] == 1.0

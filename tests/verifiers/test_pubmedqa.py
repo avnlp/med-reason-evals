@@ -1,7 +1,7 @@
 """Tests for PubMedQA Verifiers evaluator.
 
 Tests cover dataset loading, environment construction, parser configuration,
-rubric wiring, and subset parameter.
+rubric wiring, and evaluator construction defaults.
 """
 
 from __future__ import annotations
@@ -102,20 +102,13 @@ class TestPubMedQARubricConfiguration:
             )
 
 
-class TestPubMedQASubset:
-    """Tests for PubMedQA subset parameter."""
+class TestPubMedQAConstruction:
+    """Tests for PubMedQA evaluator construction defaults."""
 
-    def test_evaluator_creation(
-        self,
-        mock_load_dataset_factory: Callable[[Dataset], MagicMock],
-        pubmedqa_mock_dataset: Dataset,
-    ) -> None:
-        """Verify evaluator can be created."""
-        with patch(
-            "med_reason_evals.data.pubmedqa.load_dataset",
-            mock_load_dataset_factory(pubmedqa_mock_dataset),
-        ):
-            # Verifiers evaluator doesn't accept subset,
-            # uses hardcoded values internally
-            evaluator = PubMedQAEvaluator(streaming=False)
-            assert evaluator is not None
+    def test_default_construction(self) -> None:
+        """Verify evaluator defaults: non-streaming, XML format, no think."""
+        evaluator = PubMedQAEvaluator(streaming=False)
+
+        assert evaluator.streaming is False
+        assert evaluator.use_think is False
+        assert evaluator.answer_format == AnswerFormat.XML

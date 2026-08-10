@@ -7,7 +7,7 @@ openlifescienceai/pubmedqa test set (A/B/C answer scheme).
 from unittest.mock import patch
 
 import pytest
-from datasets import Dataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.pubmedqa import PubMedQADataset
 
@@ -149,6 +149,10 @@ class TestPubMedQADataset:
         assert result is not None
         assert "Aspirin is widely used" in result["question"]
         assert "A meta-analysis was conducted" in result["question"]
+        assert (
+            "Aspirin is widely used...\nA meta-analysis was conducted..."
+            in result["question"]
+        )
 
     @patch("med_reason_evals.data.pubmedqa.load_dataset")
     def test_map_example_verl_valid(self, mock_load_dataset, mock_examples):
@@ -204,6 +208,56 @@ class TestPubMedQADataset:
 
         result = dataset.get_verl_dataset()
         examples = list(result)
+
+        assert len(examples) == 3
+        for ex in examples:
+            assert "prompt" in ex
+            assert "ground_truth" in ex
+
+    @patch("med_reason_evals.data.pubmedqa.load_dataset")
+    def test_get_verifiers_dataset_streaming(self, mock_load_dataset, mock_examples):
+        """Test verifiers dataset generation under streaming with malformed rows."""
+        malformed = {
+            "data": {
+                "Question": "Test?",
+                "Correct Option": "Z",
+                "Context": [],
+                "Options": {},
+            }
+        }
+        mock_load_dataset.return_value = IterableDataset.from_list(
+            mock_examples + [malformed]
+        )
+        dataset = PubMedQADataset()
+
+        examples = list(dataset.get_verifiers_dataset())
+
+        assert len(examples) == 3
+        answers = {ex["answer"] for ex in examples}
+        assert answers == {"A", "B", "C"}
+
+    @patch("med_reason_evals.data.pubmedqa.load_dataset")
+    def test_get_verl_dataset_streaming(self, mock_load_dataset, mock_examples):
+        """Test verl dataset generation under streaming with malformed rows.
+
+        Regression test: the lazy ``IterableDataset`` mapping path raises
+        ``TypeError`` when the mapper returns None, so invalid rows must be
+        filtered out before mapping.
+        """
+        malformed = {
+            "data": {
+                "Question": "",
+                "Correct Option": "A",
+                "Context": [],
+                "Options": {},
+            }
+        }
+        mock_load_dataset.return_value = IterableDataset.from_list(
+            mock_examples + [malformed]
+        )
+        dataset = PubMedQADataset()
+
+        examples = list(dataset.get_verl_dataset())
 
         assert len(examples) == 3
         for ex in examples:
