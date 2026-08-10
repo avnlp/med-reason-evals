@@ -79,17 +79,6 @@ class TestMMLUProHealthDataset:
         """Return a mock Dataset with health examples."""
         return Dataset.from_list(mock_health_examples)
 
-    def _create_mock_load_dataset(self, examples):
-        """Create a mock load_dataset function that returns a filterable dataset."""
-
-        def mock_load(*args, **kwargs):
-            dataset = Dataset.from_list(examples)
-            # Store original for filtering
-            dataset._original_examples = examples
-            return dataset
-
-        return mock_load
-
     @patch("med_reason_evals.data.mmlu_pro_health.load_dataset")
     def test_initialization(self, mock_load_dataset, mock_health_examples):
         """Test dataset initialization with default parameters."""

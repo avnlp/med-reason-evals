@@ -18,10 +18,13 @@ import asyncio
 import os
 
 from datasets import Dataset
-from openai import AsyncOpenAI
 
 from med_reason_evals.data.mmlu_pro_health import MMLUProHealthDataset
-from med_reason_evals.verifiers.base import BaseMCQEvaluator, GroqGenConfig
+from med_reason_evals.verifiers.base import (
+    BaseMCQEvaluator,
+    GroqGenConfig,
+    make_async_openai_client,
+)
 from med_reason_evals.verifiers.utils.prompts import AnswerFormat
 
 
@@ -59,8 +62,15 @@ class MMLUProHealthEvaluator(BaseMCQEvaluator):
 async def main() -> None:  # pragma: no cover
     """Run MMLUProHealth evaluation with Groq API."""
     config = GroqGenConfig()
-    client = AsyncOpenAI(
-        api_key=os.getenv(config.api_key_env),
+    api_key = os.getenv(config.api_key_env)
+    if not api_key:
+        raise ValueError(
+            f"No API key found. Set the {config.api_key_env} environment variable. "
+            "Refusing to fall back to the openai package's default key resolution, "
+            "which could leak an unrelated OPENAI_API_KEY to the Groq base_url."
+        )
+    client = make_async_openai_client(
+        api_key=api_key,
         base_url=config.base_url,
     )
 

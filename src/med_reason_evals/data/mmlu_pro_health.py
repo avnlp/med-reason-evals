@@ -35,13 +35,15 @@ class MMLUProHealthDataset(BaseDataset):
         Args:
             split: Dataset split to use.
             streaming: Whether to stream the dataset.
-            **kwargs: Additional arguments.
+            **kwargs: Additional keyword arguments forwarded to
+                ``load_dataset()`` (e.g. ``revision``, ``cache_dir``).
         """
         super().__init__(split=split, streaming=streaming, **kwargs)
         dataset = load_dataset(
             self.DATASET_PATH,
             split=split,
             streaming=streaming,
+            **kwargs,
         )
         # Filter to health category
         self._dataset = dataset.filter(
@@ -66,8 +68,22 @@ class MMLUProHealthDataset(BaseDataset):
         opts = "\n".join(f"{ltr}. {opt}" for ltr, opt in zip(letters, options))
         return f"Question: {question}\n\n{opts}\n\nAnswer:"
 
-    def _map_example(self, example: dict[str, Any]) -> dict[str, Any]:
-        """Map a raw example to verifiers format."""
+    def _normalize_example(
+        self, example: dict[str, Any]
+    ) -> tuple[str, list[str], str, int] | None:
+        """Normalize a raw example's options and answer to letter form.
+
+        Applies the shared validation rules used by both output schemas:
+        strips the question, drops empty/``N/A`` options, and resolves the
+        answer (letter or index) to a letter plus its index into the filtered
+        options list.
+
+        Returns:
+            A ``(question, options, answer_letter, answer_idx)`` tuple, or
+            ``None`` if the example cannot be mapped (blank question, no
+            usable options, or an answer that cannot be resolved to a valid
+            letter within range).
+        """
         question = (example.get("question") or "").strip()
         options = [
             o
@@ -77,7 +93,7 @@ class MMLUProHealthDataset(BaseDataset):
         answer = example.get("answer", "")
 
         if not question or not options:
-            return {"question": "", "answer": None, "info": {}}
+            return None
 
         # Answer can be a letter or index
         if isinstance(answer, str) and answer.upper() in self.LETTER_INDICES:
@@ -87,11 +103,23 @@ class MMLUProHealthDataset(BaseDataset):
             answer_idx = answer
             answer_letter = self.LETTER_INDICES[answer_idx]
         else:
-            return {"question": "", "answer": None, "info": {}}
+            return None
 
+        # Bound the letter branch: an int answer is already checked against
+        # len(options) above, but a letter can resolve to an index past the
+        # (filtered) option list.
         if answer_idx >= len(options):
+            return None
+
+        return question, options, answer_letter, answer_idx
+
+    def _map_example(self, example: dict[str, Any]) -> dict[str, Any]:
+        """Map a raw example to verifiers format."""
+        normalized = self._normalize_example(example)
+        if normalized is None:
             return {"question": "", "answer": None, "info": {}}
 
+        question, options, answer_letter, answer_idx = normalized
         return {
             "question": self._build_prompt(question, options),
             "answer": answer_letter,
@@ -103,36 +131,16 @@ class MMLUProHealthDataset(BaseDataset):
 
     def _map_example_verl(self, example: dict[str, Any]) -> dict[str, Any]:
         """Map a raw example to Verl format."""
-        question = (example.get("question") or "").strip()
-        options = [
-            o
-            for o in (example.get("options", []) or [])
-            if o and o.strip().upper() != "N/A"
-        ]
-        answer = example.get("answer", "")
+        normalized = self._normalize_example(example)
+        if normalized is None:
+            return {
+                "prompt": [],
+                "ground_truth": None,
+                "data_source": "mmlu_pro_health",
+                "metadata": {},
+            }
 
-        _invalid = {
-            "prompt": [],
-            "ground_truth": None,
-            "data_source": "mmlu_pro_health",
-            "metadata": {},
-        }
-
-        if not question or not options:
-            return _invalid
-
-        if isinstance(answer, str) and answer.upper() in self.LETTER_INDICES:
-            answer_letter = answer.upper()
-            answer_idx = self.LETTER_INDICES.index(answer_letter)
-        elif isinstance(answer, int) and 0 <= answer < len(options):
-            answer_idx = answer
-            answer_letter = self.LETTER_INDICES[answer_idx]
-        else:
-            return _invalid
-
-        if answer_idx >= len(options):
-            return _invalid
-
+        question, options, answer_letter, answer_idx = normalized
         prompt = self._build_prompt(question, options)
 
         return {
