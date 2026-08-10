@@ -13,6 +13,18 @@ from datasets import Dataset, IterableDataset, load_dataset
 from med_reason_evals.data.base import BaseDataset
 
 
+# Columns attached to every row by ``_normalize_row`` so the normalized form
+# is computed exactly once per row and reused by the validity filter and the
+# mappers, instead of being re-derived during both the filter and map passes.
+_NORMALIZED_COLUMNS = [
+    "_valid",
+    "_question",
+    "_options",
+    "_answer_letter",
+    "_answer_idx",
+]
+
+
 class MMLUProHealthDataset(BaseDataset):
     """MMLUProHealth dataset for professional-level medical questions.
 
@@ -113,9 +125,78 @@ class MMLUProHealthDataset(BaseDataset):
 
         return question, options, answer_letter, answer_idx
 
+    def _normalize_row(self, example: dict[str, Any]) -> dict[str, Any]:
+        """Normalize an example once and attach the result as extra columns.
+
+        Stores the normalized fields on the row so the cheap validity filter
+        and the mappers can reuse them instead of re-running
+        ``_normalize_example``. Invalid rows carry sentinel values and a
+        ``_valid`` flag of False; they are dropped by the pipeline filter.
+
+        Args:
+            example: A raw dataset row.
+
+        Returns:
+            The row dict augmented with the ``_NORMALIZED_COLUMNS`` keys.
+        """
+        normalized = self._normalize_example(example)
+        if normalized is None:
+            return {
+                "_valid": False,
+                "_question": "",
+                # A list-of-string sentinel (not []) keeps the ``_options``
+                # column's Arrow type consistent across map batches: an empty
+                # list infers as ``list<null>``, which cannot later store real
+                # option strings when the first batch of rows is all invalid.
+                "_options": [""],
+                "_answer_letter": "",
+                "_answer_idx": -1,
+            }
+
+        question, options, answer_letter, answer_idx = normalized
+        return {
+            "_valid": True,
+            "_question": question,
+            "_options": options,
+            "_answer_letter": answer_letter,
+            "_answer_idx": answer_idx,
+        }
+
+    def _normalized(
+        self, example: dict[str, Any]
+    ) -> tuple[str, list[str], str, int] | None:
+        """Return the normalized tuple for a row, reusing pre-attached fields.
+
+        Rows that flowed through ``_normalize_row`` carry the ``_valid`` flag
+        and the normalized fields as columns, so the mappers reuse them
+        instead of normalizing a second time. Rows normalized as invalid
+        (``_valid`` False) return ``None`` here, routing them through the
+        mappers' placeholder path exactly as a raw row rejected by
+        ``_normalize_example`` would. Direct calls with a raw row (e.g. in
+        tests) fall back to ``_normalize_example`` so the cache path and the
+        validation path cannot disagree about what constitutes a usable row.
+
+        Args:
+            example: A dataset row (raw or pre-normalized).
+
+        Returns:
+            A ``(question, options, answer_letter, answer_idx)`` tuple, or
+            ``None`` if the example cannot be mapped.
+        """
+        if "_valid" in example:
+            if not example["_valid"]:
+                return None
+            return (
+                example["_question"],
+                example["_options"],
+                example["_answer_letter"],
+                example["_answer_idx"],
+            )
+        return self._normalize_example(example)
+
     def _map_example(self, example: dict[str, Any]) -> dict[str, Any]:
         """Map a raw example to verifiers format."""
-        normalized = self._normalize_example(example)
+        normalized = self._normalized(example)
         if normalized is None:
             return {"question": "", "answer": None, "info": {}}
 
@@ -131,7 +212,7 @@ class MMLUProHealthDataset(BaseDataset):
 
     def _map_example_verl(self, example: dict[str, Any]) -> dict[str, Any]:
         """Map a raw example to Verl format."""
-        normalized = self._normalize_example(example)
+        normalized = self._normalized(example)
         if normalized is None:
             return {
                 "prompt": [],
@@ -157,13 +238,27 @@ class MMLUProHealthDataset(BaseDataset):
         }
 
     def get_verifiers_dataset(self) -> Dataset | IterableDataset:
-        """Return dataset formatted for verifiers evaluation."""
-        mapped = self._dataset.map(self._map_example)
-        return mapped.filter(lambda x: x is not None and x.get("answer") is not None)
+        """Return dataset formatted for verifiers evaluation.
+
+        Each row is normalized exactly once (``_normalize_row``); invalid rows
+        are then dropped by the cheap ``_valid`` filter before mapping, so the
+        mapper never emits placeholder rows that would otherwise shape the
+        mapped dataset's inferred features.
+        """
+        return (
+            self._dataset.map(self._normalize_row)
+            .filter(lambda row: row["_valid"])
+            .map(self._map_example, remove_columns=_NORMALIZED_COLUMNS)
+        )
 
     def get_verl_dataset(self) -> Dataset | IterableDataset:
-        """Return dataset formatted for Verl training."""
-        mapped = self._dataset.map(self._map_example_verl)
-        return mapped.filter(
-            lambda x: x is not None and x.get("ground_truth") is not None
+        """Return dataset formatted for Verl training.
+
+        Invalid rows are filtered out before mapping (see
+        ``get_verifiers_dataset``).
+        """
+        return (
+            self._dataset.map(self._normalize_row)
+            .filter(lambda row: row["_valid"])
+            .map(self._map_example_verl, remove_columns=_NORMALIZED_COLUMNS)
         )

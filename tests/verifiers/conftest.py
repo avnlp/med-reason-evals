@@ -6,6 +6,7 @@ verifiers evaluators without network access.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -297,9 +298,25 @@ def healthbench_mock_dataset() -> Dataset:
 
 @pytest.fixture
 def mock_load_dataset_factory():
-    """Factory fixture to create a mock load_dataset that returns a given dataset."""
+    """Factory fixture to create a mock load_dataset that returns a given dataset.
+
+    The mock keys returned datasets on the ``split`` keyword argument so each
+    split receives a distinct dataset object. Tests that load train and eval
+    splits therefore exercise real split separation instead of receiving the
+    same object for every ``load_dataset`` call.
+    """
 
     def _factory(dataset: Dataset) -> MagicMock:
-        return MagicMock(return_value=dataset)
+        mock = MagicMock()
+        datasets_by_split: dict[str, Dataset] = {}
+
+        def _load_dataset(*args: Any, **kwargs: Any) -> Dataset:
+            split = kwargs.get("split", "default")
+            if split not in datasets_by_split:
+                datasets_by_split[split] = Dataset.from_dict(dataset.to_dict())
+            return datasets_by_split[split]
+
+        mock.side_effect = _load_dataset
+        return mock
 
     return _factory
