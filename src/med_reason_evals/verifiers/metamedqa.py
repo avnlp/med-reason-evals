@@ -1,111 +1,77 @@
-"""MetaMedQA Evaluation.
+"""MetaMedQA verifiers evaluator.
 
-Dataset: HuggingFace `maximegmd/MetaMedQA` dataset.
+Evaluator for MetaMedQA, an aggregated collection of multiple medical QA datasets
+combined into a unified benchmark. This provides broad coverage across different
+medical domains and question styles.
 
-- Parser: Extracts first letter A-Z from completions
-- Reward Functions:
-    - Correct answer reward
-    - Format reward
+MetaMedQA enables evaluation on diverse medical knowledge without needing
+separate evaluators for each source dataset. It's useful for holistic assessment
+of medical AI systems across varied content.
+
+The evaluator uses standard MCQ patterns with XML answer extraction.
+
+Reference: https://github.com/MetaMedQA/MetaMedQA
 """
 
+import asyncio
 import os
-from typing import Any
 
-import verifiers as vf
-from dotenv import find_dotenv, load_dotenv
-from openai import OpenAI
+from datasets import Dataset
+from openai import AsyncOpenAI
 
 from med_reason_evals.data.metamedqa import MetaMedQADataset
-from med_reason_evals.verifiers.answer_correctness_reward import (
-    correct_answer_reward_func,
-)
+from med_reason_evals.verifiers.base import BaseMCQEvaluator, GroqGenConfig
+from med_reason_evals.verifiers.utils.prompts import AnswerFormat
 
 
-class LetterParser:
-    """Parser that extracts the first letter (A-Z) from completions."""
+class MetaMedQAEvaluator(BaseMCQEvaluator):
+    """Evaluator for MetaMedQA."""
 
-    def __init__(self) -> None:
-        """Initialize the LetterParser."""
-        pass
+    def __init__(
+        self,
+        use_think: bool = False,
+        system_prompt: str | None = None,
+        answer_format: AnswerFormat | str = AnswerFormat.XML,
+        streaming: bool | None = None,
+    ) -> None:
+        """Initialize the MetaMedQA evaluator.
 
-    def parse_answer(self, completion: Any) -> str:
-        """Parse the completion to extract the first letter A-Z."""
-        text = self._get_text_from_completion(completion)
-        return self._first_letter(text) or ""
+        Args:
+            use_think: Whether to include thinking tags in the output.
+            system_prompt: Custom system prompt to use. If None, uses default.
+            answer_format: Format for answers (XML or BOXED).
+            streaming: Whether to use streaming mode for dataset loading.
+                Defaults to False if not specified.
+        """
+        super().__init__(
+            use_think=use_think,
+            system_prompt=system_prompt,
+            answer_format=answer_format,
+            streaming=streaming,
+        )
 
-    def get_format_reward_func(self) -> Any:
-        """Return a format reward function (simple placeholder)."""
-
-        def format_reward(
-            parser: Any, completion: str, answer: str, **kwargs: Any
-        ) -> float:
-            # Basic format reward - just check if we were able to extract a letter
-            parsed = self.parse_answer(completion)
-            return 1.0 if parsed != "" else 0.0
-
-        return format_reward
-
-    def _get_text_from_completion(self, completion: Any) -> str:
-        if isinstance(completion, str):
-            return completion
-        if isinstance(completion, list) and completion:
-            last = completion[-1]
-            if isinstance(last, dict):
-                return str(last.get("content", ""))
-            return str(last)
-        return str(completion)
-
-    def _first_letter(self, text: str) -> str:
-        t = (text or "").upper()
-        for ch in t:
-            if "A" <= ch <= "Z":
-                return ch
-        return ""
+    def _load_datasets(self) -> tuple[Dataset | None, Dataset]:
+        test_dataset = MetaMedQADataset(split="test", streaming=self.streaming)
+        return None, test_dataset.get_verifiers_dataset()
 
 
-def main() -> None:
-    """Run the evaluation on the MetaMedQA dataset."""
-    # Load environment variables from the working directory (and parents)
-    load_dotenv(find_dotenv(usecwd=True))
-
-    # Create an instance of the processor
-    dataset = MetaMedQADataset(split="test", num_examples=-1)
-
-    # Construct prompts
-    system_prompt = (
-        "Think step-by-step inside think> tags, then give only the letter "
-        "of the correct answer. Do not include option text; only the letter."
+async def main() -> None:  # pragma: no cover
+    """Run MetaMedQA evaluation with Groq API."""
+    config = GroqGenConfig()
+    client = AsyncOpenAI(
+        api_key=os.getenv(config.api_key_env),
+        base_url=config.base_url,
     )
 
-    parser = LetterParser()
-
-    rubric = vf.Rubric(
-        funcs=[correct_answer_reward_func, parser.get_format_reward_func()],
-        weights=[1.0, 0.0],
-        parser=parser,
-    )
-
-    env = vf.SingleTurnEnv(
-        dataset=dataset.dataset,
-        eval_dataset=dataset.dataset,  # Using same dataset for both train and eval as in original
-        system_prompt=system_prompt,
-        parser=parser,
-        rubric=rubric,
-    )
-
-    # Run the evaluation
-    client = OpenAI(
-        api_key=os.getenv("GROQ_API_KEY"),
-        base_url="https://api.groq.com/v1",
-    )
-    results = env.evaluate(
+    evaluator = MetaMedQAEvaluator()
+    results = await evaluator.evaluate(
         client=client,
-        model="llama-3.3-70b-versatile",
-        num_examples=2,
-        rollouts_per_example=5,
+        model=config.model,
+        num_examples=100,
     )
-    print(results)
+
+    print(f"MetaMedQA Results: {results}")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    asyncio.run(main())
