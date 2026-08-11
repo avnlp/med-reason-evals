@@ -9,6 +9,7 @@ This package exposes dataset adapters and connects them to two evaluation paths,
 3. Run evaluation and aggregate results.
 
 ```python
+import asyncio
 import os
 from openai import AsyncOpenAI
 from med_reason_evals import MedQADataset
@@ -23,19 +24,31 @@ dataset = MedQADataset(split="test", streaming=False)
 verifiers_dataset = dataset.get_verifiers_dataset()
 
 evaluator = MedQAEvaluator(use_think=True, answer_format="xml")
-results = evaluator.evaluate(
-    client=client,
-    model="openai/gpt-oss-120b",
-    num_examples=100,
+results = asyncio.run(
+    evaluator.evaluate(
+        client=client,
+        model="openai/gpt-oss-120b",
+        num_examples=100,
+    )
 )
 ```
+
+Both evaluation paths expose `evaluate()` as a coroutine, so it must be awaited
+or run via `asyncio.run()`.
 
 ## Inputs and outputs
 
 - **Inputs** include dataset configuration, evaluation settings, and model credentials.
 - **Verifiers** use a question-and-answer dataset shape with metadata for scoring.
 - **Verl** uses a message-based prompt shape with ground truth, metadata, and dataset identity for reward routing.
-- **Outputs** are aggregated scores per dataset with counts and averages suitable for reporting.
+- **Outputs differ by path and are not interchangeable.**
+  - **Verifiers** returns a `GenerateOutputs` object of **per-example parallel
+    arrays** — `prompt`, `completion`, `answer`, `reward` (`list[float]`),
+    `metrics` (`dict[str, list[float]]`), `state`, `info`, `example_id`,
+    `is_truncated` — plus a `metadata` record. Aggregate it yourself, e.g.
+    `sum(results.reward) / len(results.reward)`.
+  - **Verl** returns an **aggregated dict** — `dataset`, `num_examples`, and
+    `avg_score` — already reduced across the run.
 
 ## Key behaviors and edge handling
 

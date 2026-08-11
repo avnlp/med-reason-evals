@@ -89,7 +89,10 @@ verl_dataset = dataset.get_verl_dataset()
 
 ### 2) Run evaluation with Verifiers
 
+`evaluate()` is a coroutine — `await` it, or wrap it in `asyncio.run()` as below.
+
 ```python
+import asyncio
 import os
 from openai import AsyncOpenAI
 from med_reason_evals.verifiers import MedQAEvaluator
@@ -100,11 +103,16 @@ client = AsyncOpenAI(
 )
 
 evaluator = MedQAEvaluator(use_think=True, answer_format="xml")
-results = evaluator.evaluate(
-    client=client,
-    model="openai/gpt-oss-120b",
-    num_examples=100,
+results = asyncio.run(
+    evaluator.evaluate(
+        client=client,
+        model="openai/gpt-oss-120b",
+        num_examples=100,
+    )
 )
+
+# Per-example parallel arrays: results.reward[i] corresponds to results.prompt[i]
+print(sum(results.reward) / len(results.reward))
 ```
 
 ### 3) Run evaluation with Verl

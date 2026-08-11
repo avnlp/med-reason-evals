@@ -47,14 +47,16 @@ make security            # Run bandit + pip-audit
 ```
 Datasets (data/)
     ├── get_verifiers_dataset() → Verifiers Evaluators (verifiers/)
-    │       Schema: question, answer, info
+    │       Schema:    question, answer, info
     │       Streaming: False (needs len()/shuffle())
-    │       Entry: evaluator.evaluate(client, model, num_examples)   # sync
+    │       Entry:     await evaluator.evaluate(client, model, num_examples)
+    │       Returns:   GenerateOutputs — per-example parallel arrays
     │
     └── get_verl_dataset() → Verl Evaluators (verl/)
-            Schema: prompt, ground_truth, data_source, metadata
+            Schema:    prompt, ground_truth, data_source, metadata
             Streaming: True
-            Entry: await evaluator.evaluate(num_examples)            # async
+            Entry:     await evaluator.evaluate(num_examples)
+            Returns:   dict — dataset, num_examples, avg_score (aggregated)
 ```
 
 ### Dataset Layer (`src/med_reason_evals/data/`)
@@ -74,8 +76,12 @@ Three base classes in `base.py`:
 
 Builder pattern: subclasses implement `_load_datasets()`, `_build_parser_and_prompt()`, `_build_rubric()`.
 
-`evaluate()` here is **synchronous**. Passing `streaming=True` raises — verifiers
-environments need `len()`/`shuffle()`.
+`BaseVerifierEvaluator.evaluate()` is declared `def` but returns the coroutine
+from `vf.Environment.evaluate()` un-awaited, and is annotated `-> Any` — so mypy
+will not flag a missing `await`. Callers **must** await it or use
+`asyncio.run()`; calling it bare silently evaluates nothing.
+
+Passing `streaming=True` raises — verifiers environments need `len()`/`shuffle()`.
 
 ### Verl Evaluators (`src/med_reason_evals/verl/`)
 
