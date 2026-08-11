@@ -6,7 +6,7 @@ Provides MedBulletsEvaluator for MedBullets RL training with Groq rollouts.
 import asyncio
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.medbullets import MedBulletsDataset
 from med_reason_evals.verl.base import BaseMCQEvaluator, GroqGenConfig
@@ -50,11 +50,11 @@ class MedBulletsEvaluator(BaseMCQEvaluator):
         )
         self.num_options = num_options
 
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Load the MedBullets dataset.
 
         Returns:
-            IterableDataset formatted for Verl.
+            Dataset or IterableDataset formatted for Verl.
         """
         dataset = MedBulletsDataset(
             num_options=self.num_options,
