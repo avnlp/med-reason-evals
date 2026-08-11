@@ -42,11 +42,12 @@ or run via `asyncio.run()`.
 - **Verifiers** use a question-and-answer dataset shape with metadata for scoring.
 - **Verl** uses a message-based prompt shape with ground truth, metadata, and dataset identity for reward routing.
 - **Outputs differ by path and are not interchangeable.**
-  - **Verifiers** returns a `GenerateOutputs` object of **per-example parallel
-    arrays** — `prompt`, `completion`, `answer`, `reward` (`list[float]`),
-    `metrics` (`dict[str, list[float]]`), `state`, `info`, `example_id`,
-    `is_truncated` — plus a `metadata` record. Aggregate it yourself, e.g.
-    `sum(results.reward) / len(results.reward)`.
+  - **Verifiers** returns a `GenerateOutputs` **TypedDict** (a plain `dict` at
+    runtime, so index it by key) of **per-example parallel arrays** — `prompt`,
+    `completion`, `answer`, `reward` (`list[float]`), `metrics`
+    (`dict[str, list[float]]`), `state`, `info`, `example_id`, `is_truncated` —
+    plus a `metadata` record. Aggregate it yourself, e.g.
+    `sum(results["reward"]) / len(results["reward"])`.
   - **Verl** returns an **aggregated dict** — `dataset`, `num_examples`, and
     `avg_score` — already reduced across the run.
 

@@ -111,8 +111,10 @@ results = asyncio.run(
     )
 )
 
-# Per-example parallel arrays: results.reward[i] corresponds to results.prompt[i]
-print(sum(results.reward) / len(results.reward))
+# GenerateOutputs is a TypedDict — access it by key, not attribute.
+# Per-example parallel arrays: results["reward"][i] pairs with results["prompt"][i]
+rewards = results["reward"]
+print(sum(rewards) / len(rewards))
 ```
 
 ### 3) Run evaluation with Verl
