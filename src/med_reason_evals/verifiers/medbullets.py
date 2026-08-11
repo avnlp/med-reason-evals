@@ -1,74 +1,83 @@
-"""Medbullets Evaluation.
+"""MedBullets verifiers evaluator.
 
-Dataset: HuggingFace `mkieffer/Medbullets` dataset.
+Evaluator for MedBullets, a bank of USMLE Step 2/3 style questions used for
+medical board preparation. The same questions ship in a four-option and a
+five-option variant, so ``num_options`` selects the difficulty by varying the
+number of distractors.
 
-- Parser: Extracts \boxed{A|B|C|D|E} from completions
-- Reward Functions:
-    - Correct answer reward
-    - Format reward
+Unlike the other MCQ evaluators, MedBullets defaults to the BOXED answer
+format (``\\boxed{}``), which pairs well with chain-of-thought reasoning.
+
+Reference: https://step2.medbullets.com/
 """
 
+import asyncio
 import os
 
-import verifiers as vf
-from dotenv import find_dotenv, load_dotenv
-from openai import OpenAI
-from verifiers.utils.data_utils import extract_boxed_answer
+from datasets import Dataset
+from openai import AsyncOpenAI
 
 from med_reason_evals.data.medbullets import MedBulletsDataset
-from med_reason_evals.verifiers.answer_correctness_reward import (
-    correct_answer_reward_func,
-)
+from med_reason_evals.verifiers.base import BaseMCQEvaluator, GroqGenConfig
+from med_reason_evals.verifiers.utils.prompts import AnswerFormat
 
 
-def main() -> None:
-    """Run the evaluation on the Medbullets dataset."""
-    # Load environment variables from the working directory (and parents)
-    load_dotenv(find_dotenv(usecwd=True))
+class MedBulletsEvaluator(BaseMCQEvaluator):
+    """Evaluator for MedBullets."""
 
-    # Create an instance of the processor
-    dataset = MedBulletsDataset(
-        num_train_examples=-1, num_eval_examples=-1, num_options=4
+    def __init__(
+        self,
+        num_options: int = 4,
+        use_think: bool = False,
+        system_prompt: str | None = None,
+        answer_format: AnswerFormat | str = AnswerFormat.BOXED,
+        streaming: bool | None = None,
+    ) -> None:
+        """Initialize the MedBullets evaluator.
+
+        Args:
+            num_options: Number of answer options per question (4 or 5).
+                Validated when the dataset is loaded.
+            use_think: Whether to include thinking tags in the output.
+            system_prompt: Custom system prompt to use. If None, uses default.
+            answer_format: Format for answers (XML or BOXED).
+            streaming: Whether to use streaming mode for dataset loading.
+                Defaults to False if not specified.
+        """
+        super().__init__(
+            use_think=use_think,
+            system_prompt=system_prompt,
+            answer_format=answer_format,
+            streaming=streaming,
+        )
+        self.num_options = num_options
+
+    def _load_datasets(self) -> tuple[Dataset | None, Dataset]:
+        # MedBullets publishes test splits only, so there is no train dataset.
+        test_dataset = MedBulletsDataset(
+            num_options=self.num_options,
+            streaming=self.streaming,
+        )
+        return None, test_dataset.get_verifiers_dataset()
+
+
+async def main() -> None:  # pragma: no cover
+    """Run MedBullets evaluation with Groq API."""
+    config = GroqGenConfig()
+    client = AsyncOpenAI(
+        api_key=os.getenv(config.api_key_env),
+        base_url=config.base_url,
     )
 
-    # Construct prompts
-    options = "(A, B, C, or D)" if dataset.num_options == 4 else "(A, B, C, D, or E)"
-
-    system_prompt = (
-        f"Think step-by-step inside think> tags, then give only the letter "
-        f"of the correct answer inside \\boxed{{...}} {options}. Do not include option "
-        f"text in the box; only the letter."
-    )
-
-    parser = vf.ThinkParser(extract_fn=extract_boxed_answer)
-
-    rubric = vf.Rubric(
-        funcs=[correct_answer_reward_func, parser.get_format_reward_func()],
-        weights=[1.0, 0.0],
-        parser=parser,
-    )
-
-    env = vf.SingleTurnEnv(
-        dataset=dataset.train_ds,
-        eval_dataset=dataset.eval_ds,
-        system_prompt=system_prompt,
-        parser=parser,
-        rubric=rubric,
-    )
-
-    # Run the evaluation
-    client = OpenAI(
-        api_key=os.getenv("GROQ_API_KEY"),
-        base_url="https://api.groq.com/v1",
-    )
-    results = env.evaluate(
+    evaluator = MedBulletsEvaluator()
+    results = await evaluator.evaluate(
         client=client,
-        model="llama-3.3-70b-versatile",
-        num_examples=2,
-        rollouts_per_example=5,
+        model=config.model,
+        num_examples=100,
     )
-    print(results)
+
+    print(f"MedBullets Results: {results}")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    asyncio.run(main())
