@@ -1,129 +1,161 @@
-"""Load and process the Medbullets dataset.
+"""Dataset adapter for MedBullets USMLE-style multiple-choice questions.
 
-Dataset: HuggingFace `mkieffer/Medbullets` dataset.
-Each example is normalized to the fields expected by `vf.Verifiers`:
-{
-    "question": "<stem + formatted options>",      # string used as the user prompt
-    "answer":   "<A|B|C|D|E>",                     # top-level gold letter
-    "info":     { ...original example fields... }  # full source row for debugging
-}
-
-- num_options=4 : loads splits `op4_train` / `op4_eval` and drops option "E"
-- num_options=5 : loads splits `op5_train` / `op5_eval`
+MedBullets ships the same questions in a four-option (A-D) and a five-option
+(A-E) variant, exposed as the ``op4_test`` and ``op5_test`` splits. The adapter
+makes that choice explicit through ``num_options`` and formats prompts with the
+lettered layout shared by the other MCQ adapters.
 """
 
 from typing import Any
 
-from datasets import load_dataset
+from datasets import Dataset, IterableDataset, load_dataset
+
+from med_reason_evals.data.base import BaseDataset
 
 
-class MedBulletsDataset:
-    """Process the MedBullets dataset."""
+class MedBulletsDataset(BaseDataset):
+    """MedBullets dataset for medical board exam preparation.
+
+    The upstream ``options`` struct always carries keys A-E; on the four-option
+    split the ``E`` entry is empty, so it is dropped before prompts are built.
+    """
+
+    DATASET_PATH = "mkieffer/MedBullets"
+    #: Option counts with a corresponding upstream split.
+    VALID_NUM_OPTIONS = (4, 5)
 
     def __init__(
         self,
-        num_train_examples: int = -1,
-        num_eval_examples: int = -1,
+        streaming: bool = True,
         num_options: int = 4,
-    ):
-        """Initialize the MedBullets dataset processor.
+        **kwargs: Any,
+    ) -> None:
+        """Initialize the MedBullets dataset adapter.
+
+        The split is derived from ``num_options`` (``op4_test`` or
+        ``op5_test``), since the option count *is* the split for this dataset.
 
         Args:
-            num_train_examples: Number of training examples to use (-1 for all)
-            num_eval_examples: Number of evaluation examples to use (-1 for all)
-            num_options: Number of options per question (4 or 5)
+            streaming: Whether to stream the dataset.
+            num_options: Number of options per question (4 or 5).
+            **kwargs: Additional keyword arguments forwarded to
+                ``load_dataset()`` (e.g. ``revision``, ``cache_dir``).
+
+        Raises:
+            ValueError: If ``num_options`` is not 4 or 5.
         """
-        if num_options not in [4, 5]:
-            raise ValueError("'num_options' must be 4 or 5")
+        if num_options not in self.VALID_NUM_OPTIONS:
+            raise ValueError("num_options must be 4 or 5")
 
-        self.num_train_examples = num_train_examples
-        self.num_eval_examples = num_eval_examples
-        self.num_options = num_options
-        self.rng_seed = 12345
+        super().__init__(split=f"op{num_options}_test", streaming=streaming, **kwargs)
+        self._num_options = num_options
+        self._dataset = load_dataset(
+            self.DATASET_PATH,
+            split=self.split,
+            streaming=streaming,
+            **kwargs,
+        )
 
-        # Load and process datasets on initialization
-        self.train_ds, self.eval_ds = self._load_and_process_datasets()
+    @property
+    def num_options(self) -> int:
+        """Return the number of MCQ options (4 or 5, chosen at construction)."""
+        return self._num_options
 
-    def _load_and_process_datasets(self) -> tuple:
-        """Load and process the MedBullets datasets."""
-        # Load the raw datasets based on number of options
-        if self.num_options == 4:
-            train_raw, eval_raw = load_dataset(
-                "mkieffer/Medbullets", split=["op4_train", "op4_eval"]
-            )
-            # Remove option E from 4-option datasets
-            train_raw = self._remove_option_e(train_raw)
-            eval_raw = self._remove_option_e(eval_raw)
-        else:  # num_options == 5
-            train_raw, eval_raw = load_dataset(
-                "mkieffer/Medbullets", split=["op5_train", "op5_eval"]
-            )
+    def _usable_options(self, example: dict[str, Any]) -> dict[str, str]:
+        """Return the option map actually offered to the model.
 
-        # Limit number of examples if specified
-        if self.num_train_examples != -1:
-            train_raw = train_raw.select(
-                range(min(self.num_train_examples, len(train_raw)))
-            )
-        if self.num_eval_examples != -1:
-            eval_raw = eval_raw.select(
-                range(min(self.num_eval_examples, len(eval_raw)))
-            )
+        Drops the ``E`` entry on the four-option variant and any option left
+        empty upstream, so the rendered prompt never shows a blank choice.
+        """
+        options = example.get("options") or {}
+        if not isinstance(options, dict):
+            return {}
+        if self._num_options == 4:
+            options = {k: v for k, v in options.items() if k != "E"}
+        return {k: v for k, v in options.items() if v is not None and v != ""}
 
-        # Format datasets for verifiers
-        train_formatted = self._format_for_verifiers(train_raw, "train")
-        eval_formatted = self._format_for_verifiers(eval_raw, "eval")
+    def _is_valid_example(self, example: dict[str, Any]) -> bool:
+        """Check whether a raw MedBullets example is usable for evaluation.
 
-        # Shuffle datasets
-        train_formatted = train_formatted.shuffle(seed=self.rng_seed)
-        eval_formatted = eval_formatted.shuffle(seed=self.rng_seed)
+        Requires the option count to match ``num_options`` and the gold letter
+        to name one of the remaining options. This rejects four-option rows
+        whose answer is ``E``, which would otherwise yield ground truth with no
+        matching choice in the prompt.
 
-        return train_formatted, eval_formatted
+        Args:
+            example: A raw dataset row.
 
-    def _remove_option_e(self, dataset: Any) -> Any:
-        """Remove option E from the dataset."""
+        Returns:
+            True if the example is well-formed and usable for evaluation.
+        """
+        question = example.get("question", "")
+        if not isinstance(question, str) or not question.strip():
+            return False
 
-        def remove_e(ex: dict) -> dict:
-            ex = dict(ex)
-            ex["options"] = {k: v for k, v in ex["options"].items() if k != "E"}
-            return ex
+        options = self._usable_options(example)
+        if len(options) != self._num_options:
+            return False
 
-        return dataset.map(remove_e)
+        answer = example.get("answer", "")
+        return isinstance(answer, str) and answer.strip().upper() in options
 
-    def _format_for_verifiers(self, dataset: Any, split: str) -> Any:
-        """Format dataset for verifiers with question, answer, and info fields."""
-        valid = {"A", "B", "C", "D", "E"}
+    def _build_prompt(self, question: str, options: dict[str, str]) -> str:
+        """Build a formatted prompt from question and options.
 
-        def format_row(row: dict) -> dict:
-            row = dict(row)
+        The prompt uses the same lettered option format as the other MCQ
+        adapters so answer extraction stays consistent across datasets.
+        """
+        opts = "\n".join(f"{k}. {v}" for k, v in options.items())
+        return f"Question: {question}\n\n{opts}\n\nAnswer:"
 
-            # Build the user-visible question string (stem + options)
-            q = row.get("question", "") or ""
-            opts = row.get("options", {}) or {}
+    def _map_example(self, example: dict[str, Any]) -> dict[str, Any]:
+        """Map a raw example to verifiers format."""
+        question = example["question"].strip()
+        options = self._usable_options(example)
+        answer_letter = example["answer"].strip().upper()
 
-            question_str = f"Question: {q}\n"
-            for k, v in opts.items():
-                # Skip null values of v (for the combined dataset where E
-                # opt for 4op is null)
-                if v is not None and v != "":
-                    question_str += f"\n{k}: {v}"
+        return {
+            "question": self._build_prompt(question, options),
+            "answer": answer_letter,
+            "info": {
+                "answer_text": options[answer_letter],
+                "original_question": question,
+            },
+        }
 
-            # Lift the answer top-level, normalize to a single letter
-            ans = (row.get("answer") or "").strip().upper()
-            if ans not in valid:
-                # If op4 split sometimes stores 'E' or empty, coerce safely
-                if ans == "" and "answer_letter" in row:
-                    ans = str(row["answer_letter"]).strip().upper()
-                if ans not in valid:
-                    # Final guard: set to empty if unexpected
-                    ans = ""
+    def _map_example_verl(self, example: dict[str, Any]) -> dict[str, Any]:
+        """Map a raw example to Verl format."""
+        question = example["question"].strip()
+        options = self._usable_options(example)
+        answer_letter = example["answer"].strip().upper()
 
-            # Keep full original example under 'info'
-            info = dict(row)
+        return {
+            "prompt": [
+                {"role": "user", "content": self._build_prompt(question, options)}
+            ],
+            "ground_truth": {
+                "answer": answer_letter,
+                "answer_text": options[answer_letter],
+            },
+            "data_source": "medbullets",
+            "metadata": {
+                "original_question": question,
+                "num_options": self._num_options,
+            },
+        }
 
-            return {
-                "question": question_str,
-                "answer": ans,
-                "info": info,
-            }
+    def get_verifiers_dataset(self) -> Dataset | IterableDataset:
+        """Return dataset formatted for verifiers evaluation.
 
-        return dataset.map(format_row)
+        Invalid rows are filtered before mapping so the mapper can assume
+        well-formed input and the lazy streaming path never sees a bad row.
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example)
+
+    def get_verl_dataset(self) -> Dataset | IterableDataset:
+        """Return dataset formatted for Verl training.
+
+        Invalid rows are filtered before mapping (see ``get_verifiers_dataset``
+        for why this matters under streaming).
+        """
+        return self._dataset.filter(self._is_valid_example).map(self._map_example_verl)

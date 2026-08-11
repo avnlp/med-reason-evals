@@ -7,7 +7,7 @@ with rubric-based multi-criteria evaluation.
 import asyncio
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.healthbench import HealthBenchDataset
 from med_reason_evals.verl.base import BaseJudgeEvaluator, GroqGenConfig, JudgeConfig
@@ -57,11 +57,11 @@ class HealthBenchEvaluator(BaseJudgeEvaluator):
         self.max_parallel_judges = max_parallel_judges
         self._judge_semaphore: asyncio.Semaphore | None = None
 
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Load the HealthBench dataset.
 
         Returns:
-            IterableDataset formatted for Verl.
+            Dataset or IterableDataset formatted for Verl.
         """
         dataset = HealthBenchDataset(
             difficulty=self.difficulty,

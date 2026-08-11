@@ -7,7 +7,7 @@ with LLM-as-Judge evaluation.
 import asyncio
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.medcasereasoning import MedCaseReasoningDataset
 from med_reason_evals.verl.base import BaseJudgeEvaluator, GroqGenConfig, JudgeConfig
@@ -66,11 +66,11 @@ Answer [yes/no]."""
         self.split = split
         self.system_prompt = system_prompt or self.DEFAULT_SYSTEM_PROMPT
 
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Load the MedCaseReasoning dataset.
 
         Returns:
-            IterableDataset formatted for Verl.
+            Dataset or IterableDataset formatted for Verl.
         """
         dataset = MedCaseReasoningDataset(
             split=self.split,

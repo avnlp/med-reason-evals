@@ -6,7 +6,7 @@ Provides MedXpertQAEvaluator for MedXpertQA RL training with Groq rollouts.
 import asyncio
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.medxpertqa import MedXpertQADataset
 from med_reason_evals.verl.base import BaseMCQEvaluator, GroqGenConfig
@@ -53,11 +53,11 @@ class MedXpertQAEvaluator(BaseMCQEvaluator):
         self.split = split
         self.question_type = question_type
 
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Load the MedXpertQA dataset.
 
         Returns:
-            IterableDataset formatted for Verl.
+            Dataset or IterableDataset formatted for Verl.
         """
         dataset = MedXpertQADataset(
             split=self.split,

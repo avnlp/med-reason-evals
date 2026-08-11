@@ -6,7 +6,7 @@ Provides PubMedQAEvaluator for PubMedQA RL training with Groq rollouts.
 import asyncio
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.pubmedqa import PubMedQADataset
 from med_reason_evals.verl.base import BaseMCQEvaluator, GroqGenConfig
@@ -48,11 +48,11 @@ class PubMedQAEvaluator(BaseMCQEvaluator):
             streaming=streaming,
         )
 
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Load the PubMedQA dataset.
 
         Returns:
-            IterableDataset formatted for Verl.
+            Dataset or IterableDataset formatted for Verl.
         """
         dataset = PubMedQADataset(streaming=self.streaming)
         return dataset.get_verl_dataset()

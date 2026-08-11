@@ -1,6 +1,6 @@
-"""MedQA Verl module.
+"""MedBullets Verl module.
 
-Provides MedQAEvaluator for MedQA RL training with Groq rollouts.
+Provides MedBulletsEvaluator for MedBullets RL training with Groq rollouts.
 """
 
 import asyncio
@@ -8,21 +8,21 @@ from typing import Any
 
 from datasets import Dataset, IterableDataset
 
-from med_reason_evals.data.medqa import MedQADataset
+from med_reason_evals.data.medbullets import MedBulletsDataset
 from med_reason_evals.verl.base import BaseMCQEvaluator, GroqGenConfig
 
 
-class MedQAEvaluator(BaseMCQEvaluator):
-    """MedQA evaluator for Verl pipelines.
+class MedBulletsEvaluator(BaseMCQEvaluator):
+    """MedBullets evaluator for Verl pipelines.
 
-    Evaluates models on MedQA-USMLE-4 multiple-choice questions.
+    Evaluates models on MedBullets medical board exam questions.
 
     Attributes:
         DATASET_NAME: Name of the dataset.
         DEFAULT_SYSTEM_PROMPT: Default system prompt for generation.
     """
 
-    DATASET_NAME = "medqa"
+    DATASET_NAME = "medbullets"
     DEFAULT_SYSTEM_PROMPT = (
         "You are a medical expert. Answer the following multiple-choice question. "
         "Think step by step and provide your final answer in <answer>X</answer> tags."
@@ -30,15 +30,15 @@ class MedQAEvaluator(BaseMCQEvaluator):
 
     def __init__(
         self,
-        split: str = "test",
+        num_options: int = 4,
         gen_config: GroqGenConfig | None = None,
         system_prompt: str | None = None,
         streaming: bool = True,
     ) -> None:
-        """Initialize the MedQA evaluator.
+        """Initialize the MedBullets evaluator.
 
         Args:
-            split: Dataset split to use ("train" or "test").
+            num_options: Number of answer options (4 or 5).
             gen_config: Configuration for generation.
             system_prompt: Optional override for system prompt.
             streaming: Whether to stream the dataset.
@@ -48,15 +48,18 @@ class MedQAEvaluator(BaseMCQEvaluator):
             system_prompt=system_prompt or self.DEFAULT_SYSTEM_PROMPT,
             streaming=streaming,
         )
-        self.split = split
+        self.num_options = num_options
 
     def _load_dataset(self) -> Dataset | IterableDataset:
-        """Load the MedQA dataset.
+        """Load the MedBullets dataset.
 
         Returns:
             Dataset or IterableDataset formatted for Verl.
         """
-        dataset = MedQADataset(split=self.split, streaming=self.streaming)
+        dataset = MedBulletsDataset(
+            num_options=self.num_options,
+            streaming=self.streaming,
+        )
         return dataset.get_verl_dataset()
 
     def _build_result(
@@ -71,26 +74,21 @@ class MedQAEvaluator(BaseMCQEvaluator):
             num_examples: Number of successfully evaluated examples.
 
         Returns:
-            Dictionary with dataset, split, num_examples, avg_score, and accuracy.
+            Dictionary with dataset, num_examples, num_options, and avg_score.
         """
         return {
             "dataset": self.DATASET_NAME,
-            "split": self.split,
             "num_examples": num_examples,
+            "num_options": self.num_options,
             "avg_score": avg_score,
-            "accuracy": avg_score,
         }
 
 
 async def main() -> None:
-    """Run MedQA Verl evaluation."""
-    evaluator = MedQAEvaluator()
+    """Run MedBullets Verl evaluation."""
+    evaluator = MedBulletsEvaluator()
     results = await evaluator.evaluate(num_examples=100)
-    print("\nMedQA Verl Results:")
-    print(f"  Dataset: {results['dataset']}")
-    print(f"  Split: {results['split']}")
-    print(f"  Examples: {results['num_examples']}")
-    print(f"  Accuracy: {results['accuracy']:.3f}")
+    print(f"\nMedBullets Verl Results: {results}")
 
 
 if __name__ == "__main__":

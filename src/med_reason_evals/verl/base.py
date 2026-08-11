@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 from openai import AsyncOpenAI
 
 from med_reason_evals.verl.rollouts import GroqRollouts
@@ -112,12 +112,13 @@ class BaseVerlEvaluator(ABC):
         return self._rollouts
 
     @abstractmethod
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Return the dataset for evaluation.
 
         Returns:
-            An IterableDataset yielding examples with 'prompt', 'ground_truth',
-            and optionally 'metadata' keys.
+            A Dataset or IterableDataset yielding examples with 'prompt',
+            'ground_truth', and optionally 'metadata' keys. Implementations
+            return an eager Dataset when ``streaming`` is False.
         """
 
     @abstractmethod

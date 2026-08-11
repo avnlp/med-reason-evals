@@ -46,6 +46,7 @@ from med_reason_evals.verifiers.base import (
 )
 from med_reason_evals.verifiers.healthbench import HealthBenchEvaluator
 from med_reason_evals.verifiers.med_mcqa import MedMCQAEvaluator
+from med_reason_evals.verifiers.medbullets import MedBulletsEvaluator
 from med_reason_evals.verifiers.medcasereasoning import MedCaseReasoningEvaluator
 from med_reason_evals.verifiers.medqa import MedQAEvaluator
 from med_reason_evals.verifiers.medxpertqa import MedXpertQAEvaluator
@@ -78,6 +79,7 @@ __all__ = [
     "JudgeConfig",
     # Dataset evaluators
     "HealthBenchEvaluator",
+    "MedBulletsEvaluator",
     "MedCaseReasoningEvaluator",
     "MedMCQAEvaluator",
     "MedQAEvaluator",

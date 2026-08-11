@@ -6,7 +6,7 @@ Provides MedMCQAEvaluator for MedMCQA RL training with Groq rollouts.
 import asyncio
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.med_mcqa import MedMCQADataset
 from med_reason_evals.verl.base import BaseMCQEvaluator, GroqGenConfig
@@ -50,11 +50,11 @@ class MedMCQAEvaluator(BaseMCQEvaluator):
         )
         self.split = split
 
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Load the MedMCQA dataset.
 
         Returns:
-            IterableDataset formatted for Verl.
+            Dataset or IterableDataset formatted for Verl.
         """
         dataset = MedMCQADataset(split=self.split, streaming=self.streaming)
         return dataset.get_verl_dataset()

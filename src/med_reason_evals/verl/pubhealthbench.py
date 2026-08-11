@@ -7,7 +7,7 @@ with hybrid MCQ/Judge evaluation.
 import asyncio
 from typing import Any
 
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 
 from med_reason_evals.data.pubhealthbench import PubHealthBenchDataset
 from med_reason_evals.verl.base import BaseJudgeEvaluator, GroqGenConfig, JudgeConfig
@@ -62,11 +62,11 @@ class PubHealthBenchEvaluator(BaseJudgeEvaluator):
         self.question_type = question_type
         self.system_prompt = system_prompt or self.DEFAULT_SYSTEM_PROMPT
 
-    def _load_dataset(self) -> IterableDataset:
+    def _load_dataset(self) -> Dataset | IterableDataset:
         """Load the PubHealthBench dataset.
 
         Returns:
-            IterableDataset formatted for Verl.
+            Dataset or IterableDataset formatted for Verl.
         """
         dataset = PubHealthBenchDataset(
             split=self.split,
